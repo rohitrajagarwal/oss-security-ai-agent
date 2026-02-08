@@ -1,0 +1,116 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+.idea/
+
+# Visual Studio Code
+*.code-workspace
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local user-specific settings
+appsettings.local.json
+appsettings.*.json
+!appsettings.json
+
+# Rider
+.idea/
+*.sln.iml
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# npm/yarn
+node_modules/
+.npm
+.yarn
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.swp
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.*.user
+
+# Logs
+*.log
+logs/
+
+# License output files
+licenses/
+*.txt
+
+# Downloaded packages
+*.nupkg
+downloaded_files/
+
+# OS generated files
+*.sublime-project
+*.sublime-workspace
+
+# GitHub specific
+.github/
+
+# CI/CD
+.travis.yml
+.circleci/
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+
+# Configuration backups
+*.config.bak
+*.json.bak
+
+# Test results
+TestResults/
+*.trx
