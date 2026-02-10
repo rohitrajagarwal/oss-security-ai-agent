@@ -58,61 +58,33 @@ public class PullRequestMergeService
 
                 try
                 {
-                    Console.WriteLine($"Checking PR #{pr.Number} for approved reviews...");
+                    Console.WriteLine($"Checking PR #{pr.Number} for required labels...");
 
-                    // Get reviews for this PR
-                    var reviews = await _gitHubClient.PullRequest.Review.GetAll(owner, repo, pr.Number);
-                    
-                    // Filter to only approved reviews
-                    var approvedReviews = reviews.Where(r => r.State.Value == PullRequestReviewState.Approved).ToList();
-                    
-                    // Check if at least one approving review is from an authorized reviewer
-                    var hasApprovedReview = false;
-                    string? authorizedApproverUsername = null;
-                    
-                    if (_approvedReviewers.Any())
+                    // Check if PR has both "approved" and "security-fix" labels
+                    var prLabels = pr.Labels.Select(l => l.Name).ToList();
+                    var hasApprovedLabel = prLabels.Contains("approved", StringComparer.OrdinalIgnoreCase);
+                    var hasSecurityFixLabel = prLabels.Contains("security-fix", StringComparer.OrdinalIgnoreCase);
+
+                    if (!hasApprovedLabel)
                     {
-                        // If we have a list of approved reviewers, validate against it
-                        foreach (var review in approvedReviews)
-                        {
-                            if (_approvedReviewers.Contains(review.User.Login, StringComparer.OrdinalIgnoreCase))
-                            {
-                                hasApprovedReview = true;
-                                authorizedApproverUsername = review.User.Login;
-                                break;
-                            }
-                        }
-                        
-                        if (!hasApprovedReview)
-                        {
-                            Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: No approval from authorized reviewers");
-                            prResult.Status = "no-authorized-approval";
-                            prResult.Message = "No approval from authorized reviewers";
-                            result.SkippedPRs.Add(prResult);
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        // If no approved reviewers list is configured, accept any approved review
-                        var approvedReview = approvedReviews.FirstOrDefault();
-                        if (approvedReview != null)
-                        {
-                            hasApprovedReview = true;
-                            authorizedApproverUsername = approvedReview.User.Login;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: No approved reviews found");
-                            prResult.Status = "no-approval";
-                            prResult.Message = "No approved reviews";
-                            result.SkippedPRs.Add(prResult);
-                            continue;
-                        }
+                        Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: Missing 'approved' label");
+                        prResult.Status = "missing-approved-label";
+                        prResult.Message = "Missing 'approved' label";
+                        result.SkippedPRs.Add(prResult);
+                        continue;
                     }
 
-                    Console.WriteLine($"  ✓ PR #{pr.Number} approved by @{authorizedApproverUsername}");
-                    Console.WriteLine($"Processing approved PR #{pr.Number}...");
+                    if (!hasSecurityFixLabel)
+                    {
+                        Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: Missing 'security-fix' label");
+                        prResult.Status = "missing-security-fix-label";
+                        prResult.Message = "Missing 'security-fix' label";
+                        result.SkippedPRs.Add(prResult);
+                        continue;
+                    }
+
+                    Console.WriteLine($"  ✓ PR #{pr.Number} has both 'approved' and 'security-fix' labels");
+                    Console.WriteLine($"Processing approved security fix PR #{pr.Number}...");
 
                     // Run final build verification
                     var buildResult = await RunFinalBuildVerificationAsync();
@@ -195,7 +167,7 @@ public class PullRequestMergeService
                         }
 
                         // Comment on PR
-                        var comment = GenerateMergeComment(pr, mergeResult, authorizedApproverUsername ?? "automated");
+                        var comment = GenerateMergeComment(pr, mergeResult, "automated-merge");
                         await CommentOnPullRequestAsync(owner, repo, pr.Number, comment);
 
                         result.SuccessfulMerges.Add(prResult);
