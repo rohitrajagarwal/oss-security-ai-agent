@@ -39,67 +39,85 @@ public class SecurityAgentTools
             .Distinct()
             .ToList();
 
-        // Fire-and-forget: Generate dependency graph with metadata as a side effect
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var graph = new DependencyGraph();
-                
-                // Add all packages as nodes with metadata
-                foreach (var (name, version) in packages)
-                {
-                    var key = $"{name}@{version}";
-                    graph.AddNode(name, version);
-                    
-                    // Populate metadata
-                    if (!graph.Metadata.ContainsKey(key))
-                    {
-                        graph.Metadata[key] = new PackageMetadata
-                        {
-                            PackageName = name,
-                            Version = version,
-                            NuGetMetadata = new NuGetMetadata()
-                        };
-                    }
-                }
+        return packages;
+    }
 
-                // Build dependency relationships from lockFile
-                foreach (var target in lockFile.Targets)
+    /// <summary>
+    /// Builds and saves the dependency graph with metadata to dependency-graph.json.
+    /// This is now awaitable to prevent race conditions where remediation reads the file immediately after scanning.
+    /// </summary>
+    [Description("Builds a comprehensive dependency graph from the project's lock file and saves it to dependency-graph.json with metadata.")]
+    public static async Task BuildDependencyGraphAsync(string projectFilePath)
+    {
+        try
+        {
+            var safePath = projectFilePath ?? string.Empty;
+            var dir = Directory.Exists(safePath) ? safePath : Path.GetDirectoryName(safePath) ?? string.Empty;
+            var assetsPath = Path.Combine(dir, "obj", "project.assets.json");
+            var lockFile = LockFileUtilities.GetLockFile(assetsPath, null);
+            
+            if (lockFile == null)
+                return;
+
+            var packages = lockFile.Targets
+                .SelectMany(t => t.Libraries)
+                .Select(l => (packageName: l.Name ?? string.Empty, version: l.Version?.ToNormalizedString() ?? string.Empty))
+                .Where(p => !string.IsNullOrEmpty(p.packageName) && !string.IsNullOrEmpty(p.version))
+                .Distinct()
+                .ToList();
+
+            var graph = new DependencyGraph();
+            
+            // Add all packages as nodes with metadata
+            foreach (var (name, version) in packages)
+            {
+                var key = $"{name}@{version}";
+                graph.AddNode(name, version);
+                
+                // Populate metadata
+                if (!graph.Metadata.ContainsKey(key))
                 {
-                    foreach (var lib in target.Libraries)
+                    graph.Metadata[key] = new PackageMetadata
                     {
-                        if (!string.IsNullOrEmpty(lib.Name))
+                        PackageName = name,
+                        Version = version,
+                        NuGetMetadata = new NuGetMetadata()
+                    };
+                }
+            }
+
+            // Build dependency relationships from lockFile
+            foreach (var target in lockFile.Targets)
+            {
+                foreach (var lib in target.Libraries)
+                {
+                    if (!string.IsNullOrEmpty(lib.Name))
+                    {
+                        var libVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
+                        if (lib.Dependencies != null)
                         {
-                            var libVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
-                            if (lib.Dependencies != null)
+                            foreach (var dep in lib.Dependencies)
                             {
-                                foreach (var dep in lib.Dependencies)
+                                if (!string.IsNullOrEmpty(dep.Id))
                                 {
-                                    if (!string.IsNullOrEmpty(dep.Id))
-                                    {
-                                        var depVersion = dep.VersionRange?.ToString() ?? "0.0.0";
-                                        graph.AddDependency(lib.Name, libVersion, dep.Id, depVersion);
-                                    }
+                                    var depVersion = dep.VersionRange?.ToString() ?? "0.0.0";
+                                    graph.AddDependency(lib.Name, libVersion, dep.Id, depVersion);
                                 }
                             }
                         }
                     }
                 }
-
-                // Save to dependency-graph.json
-                await graph.SaveToFileAsync(dir);
             }
-            catch
-            {
-                // Silently fail - this is a side effect
-            }
-        });
 
-        return packages;
+            // Save to dependency-graph.json
+            await graph.SaveToFileAsync(dir);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not build dependency graph: {ex.Message}");
+            // Non-fatal - remediation can still work without the graph
+        }
     }
-
-    
 
     // --- TOOL B: SEARCH FOR VULNERABILITIES (OSV.dev) ---
     [Description("Queries the OSV.dev API for known vulnerabilities for a list of package+version pairs using batch queries (ecosystem=NuGet).")]

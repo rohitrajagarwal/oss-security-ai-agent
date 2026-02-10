@@ -284,6 +284,10 @@ class Program
                     Console.WriteLine("Checking for vulnerabilities...");
                     var vulnerabilityJson = await SecurityAgentTools.CheckVulnerabilities(depList);
 
+                    // Step 2.5: Build dependency graph (must complete before reading it)
+                    Console.WriteLine("Building dependency graph...");
+                    await SecurityAgentTools.BuildDependencyGraphAsync(repoPath);
+
                     // Step 3: Load or create dependency graph
                     var graphPath = Path.Combine(repoPath, "dependency-graph.json");
                     var graph = await DependencyGraph.LoadFromFileAsync(graphPath) ?? new DependencyGraph();
