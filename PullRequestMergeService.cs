@@ -54,16 +54,64 @@ public class PullRequestMergeService
 
             foreach (var pr in prs)
             {
-                // Check for "approved" label on the PR
-                var hasApprovedLabel = pr.Labels.Any(l => l.Name == "approved");
-                
-                if (!hasApprovedLabel)
-                    continue;
-
                 var prResult = new PullRequestMergeResult { PRNumber = pr.Number, Title = pr.Title };
 
                 try
                 {
+                    Console.WriteLine($"Checking PR #{pr.Number} for approved reviews...");
+
+                    // Get reviews for this PR
+                    var reviews = await _gitHubClient.PullRequest.Review.GetAll(owner, repo, pr.Number);
+                    
+                    // Filter to only approved reviews
+                    var approvedReviews = reviews.Where(r => r.State.Value == PullRequestReviewState.Approved).ToList();
+                    
+                    // Check if at least one approving review is from an authorized reviewer
+                    var hasApprovedReview = false;
+                    string? authorizedApproverUsername = null;
+                    
+                    if (_approvedReviewers.Any())
+                    {
+                        // If we have a list of approved reviewers, validate against it
+                        foreach (var review in approvedReviews)
+                        {
+                            if (_approvedReviewers.Contains(review.User.Login, StringComparer.OrdinalIgnoreCase))
+                            {
+                                hasApprovedReview = true;
+                                authorizedApproverUsername = review.User.Login;
+                                break;
+                            }
+                        }
+                        
+                        if (!hasApprovedReview)
+                        {
+                            Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: No approval from authorized reviewers");
+                            prResult.Status = "no-authorized-approval";
+                            prResult.Message = "No approval from authorized reviewers";
+                            result.SkippedPRs.Add(prResult);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // If no approved reviewers list is configured, accept any approved review
+                        var approvedReview = approvedReviews.FirstOrDefault();
+                        if (approvedReview != null)
+                        {
+                            hasApprovedReview = true;
+                            authorizedApproverUsername = approvedReview.User.Login;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"  ⏭️  Skipping PR #{pr.Number}: No approved reviews found");
+                            prResult.Status = "no-approval";
+                            prResult.Message = "No approved reviews";
+                            result.SkippedPRs.Add(prResult);
+                            continue;
+                        }
+                    }
+
+                    Console.WriteLine($"  ✓ PR #{pr.Number} approved by @{authorizedApproverUsername}");
                     Console.WriteLine($"Processing approved PR #{pr.Number}...");
 
                     // Run final build verification
@@ -147,7 +195,7 @@ public class PullRequestMergeService
                         }
 
                         // Comment on PR
-                        var comment = GenerateMergeComment(pr, mergeResult, "automated");
+                        var comment = GenerateMergeComment(pr, mergeResult, authorizedApproverUsername ?? "automated");
                         await CommentOnPullRequestAsync(owner, repo, pr.Number, comment);
 
                         result.SuccessfulMerges.Add(prResult);
