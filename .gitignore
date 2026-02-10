@@ -76,6 +76,7 @@ Thumbs.db
 .env.local
 .env.*.local
 .env.*.user
+.hybrid-remediation-system.env
 
 # Logs
 *.log
