@@ -65,7 +65,7 @@ public class GitOperations
 
     public async Task<(bool success, string output)> ResetHardAsync()
     {
-        return await RunGitCommandAsync("reset", "--hard", "HEAD");
+        return await RunGitCommandAsync("reset", "--hard");
     }
 
     public async Task<(bool success, string output)> CleanAsync()
