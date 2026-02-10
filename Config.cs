@@ -9,7 +9,7 @@ using System.Linq;
 /// </summary>
 public static class Config
 {
-    private static Dictionary<string, string> _envCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> _envCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private static bool _loaded = false;
 
     /// <summary>
