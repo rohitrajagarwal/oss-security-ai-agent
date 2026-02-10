@@ -70,6 +70,8 @@ public class GitOperations
 
     public async Task<(bool success, string output)> CleanAsync()
     {
+        // Force delete untracked files and directories (-fd)
+        // This is intentionally destructive to ensure a clean state between vulnerability remediations
         return await RunGitCommandAsync("clean", "-fd");
     }
 
