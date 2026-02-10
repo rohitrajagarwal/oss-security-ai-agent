@@ -209,7 +209,7 @@ public class PullRequestMergeService
             Console.WriteLine($"❌ Merge workflow error: {ex.Message}");
         }
 
-        PrintMergeSummary(result);
+        await PrintMergeSummaryAsync(result);
         return result;
     }
 
@@ -378,11 +378,13 @@ public class PullRequestMergeService
         }
     }
 
-    private void PrintMergeSummary(MergeResult result)
+    private async Task PrintMergeSummaryAsync(MergeResult result)
     {
-        Console.WriteLine("\n" + new string('=', 50));
+        var (owner, repo) = await GetRepositoryInfoAsync();
+        
+        Console.WriteLine("\n" + new string('=', 60));
         Console.WriteLine("=== Merge Summary ===");
-        Console.WriteLine(new string('=', 50));
+        Console.WriteLine(new string('=', 60));
 
         if (result.SuccessfulMerges.Any())
         {
@@ -390,6 +392,7 @@ public class PullRequestMergeService
             foreach (var pr in result.SuccessfulMerges)
             {
                 Console.WriteLine($"   PR #{pr.PRNumber}: {pr.Title}");
+                Console.WriteLine($"   Link: https://github.com/{owner}/{repo}/pull/{pr.PRNumber}");
                 Console.WriteLine($"   Commit: {pr.MergeCommitSha}");
             }
         }
@@ -399,7 +402,9 @@ public class PullRequestMergeService
             Console.WriteLine($"\n❌ Failed Merges: {result.FailedMerges.Count}");
             foreach (var pr in result.FailedMerges)
             {
-                Console.WriteLine($"   PR #{pr.PRNumber}: {pr.Error}");
+                Console.WriteLine($"   PR #{pr.PRNumber}: {pr.Title}");
+                Console.WriteLine($"   Link: https://github.com/{owner}/{repo}/pull/{pr.PRNumber}");
+                Console.WriteLine($"   Reason: {pr.Error}");
             }
         }
 
@@ -408,7 +413,9 @@ public class PullRequestMergeService
             Console.WriteLine($"\n⏭️  Skipped PRs: {result.SkippedPRs.Count}");
             foreach (var pr in result.SkippedPRs)
             {
-                Console.WriteLine($"   PR #{pr.PRNumber}: {pr.Status}");
+                Console.WriteLine($"   PR #{pr.PRNumber}: {pr.Title}");
+                Console.WriteLine($"   Link: https://github.com/{owner}/{repo}/pull/{pr.PRNumber}");
+                Console.WriteLine($"   Reason: {pr.Message}");
             }
         }
 
@@ -417,7 +424,7 @@ public class PullRequestMergeService
             Console.WriteLine($"\n❌ Error: {result.Error}");
         }
 
-        Console.WriteLine("\n" + new string('=', 50));
+        Console.WriteLine("\n" + new string('=', 60));
     }
 }
 
