@@ -39,6 +39,63 @@ public class SecurityAgentTools
             .Distinct()
             .ToList();
 
+        // Fire-and-forget: Generate dependency graph with metadata as a side effect
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var graph = new DependencyGraph();
+                
+                // Add all packages as nodes with metadata
+                foreach (var (name, version) in packages)
+                {
+                    var key = $"{name}@{version}";
+                    graph.AddNode(name, version);
+                    
+                    // Populate metadata
+                    if (!graph.Metadata.ContainsKey(key))
+                    {
+                        graph.Metadata[key] = new PackageMetadata
+                        {
+                            PackageName = name,
+                            Version = version,
+                            NuGetMetadata = new NuGetMetadata()
+                        };
+                    }
+                }
+
+                // Build dependency relationships from lockFile
+                foreach (var target in lockFile.Targets)
+                {
+                    foreach (var lib in target.Libraries)
+                    {
+                        if (!string.IsNullOrEmpty(lib.Name))
+                        {
+                            var libVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
+                            if (lib.Dependencies != null)
+                            {
+                                foreach (var dep in lib.Dependencies)
+                                {
+                                    if (!string.IsNullOrEmpty(dep.Id))
+                                    {
+                                        var depVersion = dep.VersionRange?.ToString() ?? "0.0.0";
+                                        graph.AddDependency(lib.Name, libVersion, dep.Id, depVersion);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Save to dependency-graph.json
+                await graph.SaveToFileAsync(dir);
+            }
+            catch
+            {
+                // Silently fail - this is a side effect
+            }
+        });
+
         return packages;
     }
 
