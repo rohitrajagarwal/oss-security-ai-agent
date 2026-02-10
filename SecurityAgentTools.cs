@@ -99,6 +99,21 @@ public class SecurityAgentTools
             }
 
             // Build dependency relationships from lockFile
+            // Create a lookup map for resolved versions from the lock file
+            var resolvedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var target in lockFile.Targets)
+            {
+                foreach (var lib in target.Libraries)
+                {
+                    if (!string.IsNullOrEmpty(lib.Name))
+                    {
+                        var normalizedVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
+                        resolvedVersions[lib.Name] = normalizedVersion;
+                    }
+                }
+            }
+
+            // Now build dependency relationships using resolved versions
             foreach (var target in lockFile.Targets)
             {
                 foreach (var lib in target.Libraries)
@@ -112,7 +127,10 @@ public class SecurityAgentTools
                             {
                                 if (!string.IsNullOrEmpty(dep.Id))
                                 {
-                                    var depVersion = dep.VersionRange?.ToString() ?? "0.0.0";
+                                    // Resolve the dependency to its exact version from the lock file
+                                    var depVersion = resolvedVersions.TryGetValue(dep.Id, out var resolved) 
+                                        ? resolved 
+                                        : "0.0.0";
                                     graph.AddDependency(lib.Name, libVersion, dep.Id, depVersion);
                                 }
                             }
