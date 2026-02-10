@@ -143,7 +143,7 @@ public class PullRequestMergeService
                                         new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _githubToken);
                                     
                                     var patchPayload = System.Text.Json.JsonSerializer.Serialize(new { state = "closed" });
-                                    var content = new System.Net.Http.StringContent(patchPayload, System.Text.Encoding.UTF8, "application/json");
+                                    using var content = new System.Net.Http.StringContent(patchPayload, System.Text.Encoding.UTF8, "application/json");
                                     var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Patch,
                                         $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}")
                                     {
