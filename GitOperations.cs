@@ -58,6 +58,21 @@ public class GitOperations
         return success ? output.Trim() : string.Empty;
     }
 
+    public async Task<(bool success, string output)> CheckoutBranchAsync(string branchName)
+    {
+        return await RunGitCommandAsync("checkout", branchName);
+    }
+
+    public async Task<(bool success, string output)> ResetHardAsync()
+    {
+        return await RunGitCommandAsync("reset", "--hard", "HEAD");
+    }
+
+    public async Task<(bool success, string output)> CleanAsync()
+    {
+        return await RunGitCommandAsync("clean", "-fd");
+    }
+
     private async Task<(bool success, string output)> RunGitCommandAsync(params string[] args)
     {
         var processInfo = new ProcessStartInfo("git")
