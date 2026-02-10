@@ -63,19 +63,22 @@ public class PullRequestMergeService
                     // Get reviews for this PR
                     var reviews = await _gitHubClient.PullRequest.Review.GetAll(owner, repo, pr.Number);
                     
+                    // Filter to only approved reviews
+                    var approvedReviews = reviews.Where(r => r.State.Value == PullRequestReviewState.Approved).ToList();
+                    
                     // Check if at least one approving review is from an authorized reviewer
                     var hasApprovedReview = false;
-                    string? approverUsername = null;
+                    string? authorizedApproverUsername = null;
                     
                     if (_approvedReviewers.Any())
                     {
                         // If we have a list of approved reviewers, validate against it
-                        foreach (var review in reviews.Where(r => r.State.Value == PullRequestReviewState.Approved))
+                        foreach (var review in approvedReviews)
                         {
                             if (_approvedReviewers.Contains(review.User.Login, StringComparer.OrdinalIgnoreCase))
                             {
                                 hasApprovedReview = true;
-                                approverUsername = review.User.Login;
+                                authorizedApproverUsername = review.User.Login;
                                 break;
                             }
                         }
@@ -92,11 +95,11 @@ public class PullRequestMergeService
                     else
                     {
                         // If no approved reviewers list is configured, accept any approved review
-                        var approvedReview = reviews.FirstOrDefault(r => r.State.Value == PullRequestReviewState.Approved);
+                        var approvedReview = approvedReviews.FirstOrDefault();
                         if (approvedReview != null)
                         {
                             hasApprovedReview = true;
-                            approverUsername = approvedReview.User.Login;
+                            authorizedApproverUsername = approvedReview.User.Login;
                         }
                         else
                         {
@@ -108,7 +111,7 @@ public class PullRequestMergeService
                         }
                     }
 
-                    Console.WriteLine($"  ✓ PR #{pr.Number} approved by @{approverUsername}");
+                    Console.WriteLine($"  ✓ PR #{pr.Number} approved by @{authorizedApproverUsername}");
                     Console.WriteLine($"Processing approved PR #{pr.Number}...");
 
                     // Run final build verification
@@ -192,7 +195,7 @@ public class PullRequestMergeService
                         }
 
                         // Comment on PR
-                        var comment = GenerateMergeComment(pr, mergeResult, approverUsername ?? "automated");
+                        var comment = GenerateMergeComment(pr, mergeResult, authorizedApproverUsername ?? "automated");
                         await CommentOnPullRequestAsync(owner, repo, pr.Number, comment);
 
                         result.SuccessfulMerges.Add(prResult);
