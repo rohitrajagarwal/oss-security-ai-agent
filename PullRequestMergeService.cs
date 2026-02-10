@@ -144,9 +144,12 @@ public class PullRequestMergeService
                                     
                                     var patchPayload = System.Text.Json.JsonSerializer.Serialize(new { state = "closed" });
                                     var content = new System.Net.Http.StringContent(patchPayload, System.Text.Encoding.UTF8, "application/json");
-                                    var response = await httpClient.PatchAsync(
-                                        $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}",
-                                        content);
+                                    var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Patch,
+                                        $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}")
+                                    {
+                                        Content = content
+                                    };
+                                    var response = await httpClient.SendAsync(request);
                                     
                                     if (response.IsSuccessStatusCode)
                                     {
