@@ -150,8 +150,21 @@ public class PullRequestMergeService
                                     
                                     if (response.IsSuccessStatusCode)
                                     {
-                                        await CommentOnIssueAsync(owner, repo, int.MaxValue, // Dummy, will use API fallback
-                                            $"✅ Fixed by PR #{pr.Number}. Issue closed automatically.");
+                                        var commentPayload = System.Text.Json.JsonSerializer.Serialize(new
+                                        {
+                                            body = $"✅ Fixed by PR #{pr.Number}. Issue closed automatically."
+                                        });
+                                        var commentContent = new System.Net.Http.StringContent(
+                                            commentPayload,
+                                            System.Text.Encoding.UTF8,
+                                            "application/json");
+                                        var commentResponse = await httpClient.PostAsync(
+                                            $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments",
+                                            commentContent);
+                                        if (!commentResponse.IsSuccessStatusCode)
+                                        {
+                                            Console.WriteLine($"  ⚠️ Closed issue #{issueNumber} but could not add comment: {commentResponse.StatusCode}");
+                                        }
                                         Console.WriteLine($"  ✓ Closed associated issue #{issueNumber}");
                                     }
                                 }
