@@ -10,6 +10,8 @@
   <ItemGroup>
   
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260205.1" />
+  
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.2.0" />
     
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.0" />

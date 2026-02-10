@@ -39,6 +39,10 @@ class Program
         builder.Services.AddSingleton<SecurityAgentTools>();
         var host = builder.Build();
 
+        // 2.0 Initialize the standardized chat client for all LLM calls
+        var chatClient = host.Services.GetRequiredService<IChatClient>();
+        SecurityAgentTools.SetChatClient(chatClient);
+
         // 2.1 get repo path from args
         var repoPath = Utility.ParseRepoPath(args) ?? string.Empty;
         if (repoPath == "")

@@ -15,10 +15,22 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
 using System.Threading;
+using Microsoft.Extensions.AI;
 
 
 public class SecurityAgentTools
 {
+    private static IChatClient? _chatClient;
+
+    /// <summary>
+    /// Initialize the chat client for all LLM calls.
+    /// This must be called once during application startup.
+    /// </summary>
+    public static void SetChatClient(IChatClient chatClient)
+    {
+        _chatClient = chatClient;
+    }
+
     // --- TOOL A: SCAN FOR OSS DEPENDENCIES ---
     [Description("Scans the project at the given path for all installed NuGet packages and their exact versions and returns them as a list.")]
     public static IEnumerable<(string packageName, string version)> GetProjectDependencies(string projectFilePath)
@@ -725,123 +737,41 @@ public class SecurityAgentTools
             string generatedSummary = string.Empty;
             try
             {
-                // Prefer credentials from api_key.env located at the repo root, fallback to .env and then environment variables.
-                    // Use the project root (current working directory) to locate api_key.env/.env
-                    string baseDir = string.Empty;
-                    try { baseDir = Directory.GetCurrentDirectory(); } catch { baseDir = repoPath ?? string.Empty; }
-                    string apiEnvPath = string.Empty;
+                // Use standardized IChatClient if available
+                if (_chatClient != null)
+                {
+                    var systemPrompt = "You are a security analyst. Based only on the provided JSON context, produce a focused ~200-token risk summary explaining whether and how the reported vulnerabilities affect this codebase, and provide a concise recommendation label (Upgrade / Consider / Monitor / No action). Return the summary and recommendation as plain text.";
+                    var userPrompt = JsonSerializer.Serialize(promptContextFull);
+
+                    var messages = new List<ChatMessage>
+                    {
+                        new ChatMessage(ChatRole.System, systemPrompt),
+                        new ChatMessage(ChatRole.User, userPrompt)
+                    };
+
                     try
                     {
-                        apiEnvPath = Path.Combine(baseDir ?? string.Empty, "api_key.env");
-                    }
-                    catch { apiEnvPath = string.Empty; }
-                    string dotEnvPath = string.Empty;
-                    try { dotEnvPath = Path.Combine(baseDir ?? string.Empty, ".env"); } catch { dotEnvPath = string.Empty; }
-                string? fileUrl = null;
-                string? fileKey = null;
-
-                // Helper to parse simple KEY=VALUE files (ignores comments starting with #)
-                static void ParseKeyFile(string path, ref string? outUrl, ref string? outKey)
-                {
-                    try
-                    {
-                        if (!File.Exists(path)) return;
-                        foreach (var line in File.ReadAllLines(path))
+                        // Call the chat client
+                        var response = await _chatClient.GetResponseAsync(messages);
+                        if (response != null)
                         {
-                            var l = line.Trim();
-                            if (string.IsNullOrEmpty(l) || l.StartsWith("#")) continue;
-                            var idx = l.IndexOf('=');
-                            if (idx <= 0) continue;
-                            var k = l.Substring(0, idx).Trim();
-                            var v = l.Substring(idx + 1).Trim().Trim('"');
-                            if (k.Equals("COPILOT_API_URL", StringComparison.OrdinalIgnoreCase) || k.Equals("API_URL", StringComparison.OrdinalIgnoreCase)) outUrl = v;
-                            if (k.Equals("COPILOT_API_KEY", StringComparison.OrdinalIgnoreCase) || k.Equals("API_KEY", StringComparison.OrdinalIgnoreCase) || k.Equals("OPENAI_API_KEY", StringComparison.OrdinalIgnoreCase)) outKey = v;
-                        }
-                    }
-                    catch { }
-                }
-
-                try
-                {
-                    ParseKeyFile(apiEnvPath, ref fileUrl, ref fileKey);
-                    // If not found in api_key.env, try .env
-                    if (string.IsNullOrEmpty(fileKey)) ParseKeyFile(dotEnvPath, ref fileUrl, ref fileKey);
-                }
-                catch { }
-
-                var copilotUrl = fileUrl ?? Environment.GetEnvironmentVariable("COPILOT_API_URL") ?? "https://api.openai.com/v1/chat/completions";
-                var copilotKey = fileKey ?? Environment.GetEnvironmentVariable("COPILOT_API_KEY") ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-
-                // Determine where the key came from for diagnostics (do not print the key)
-                string keySource = string.Empty;
-                try
-                {
-                    if (!string.IsNullOrEmpty(fileKey) && File.Exists(apiEnvPath)) keySource = "api_key.env";
-                    else if (!string.IsNullOrEmpty(fileKey) && File.Exists(dotEnvPath)) keySource = ".env";
-                    else if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COPILOT_API_KEY")) || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))) keySource = "environment";
-                }
-                catch { }
-
-                var requestBody = new Dictionary<string, object?>();
-                requestBody["model"] = "gpt-4.1-nano";
-                requestBody["messages"] = new[] {
-                    new { role = "system", content = "You are a security analyst. Based only on the provided JSON context, produce a focused ~200-token risk summary explaining whether and how the reported vulnerabilities affect this codebase, and provide a concise recommendation label (Upgrade / Consider / Monitor / No action). Return the summary and recommendation as plain text." },
-                    new { role = "user", content = JsonSerializer.Serialize(promptContextFull) }
-                };
-                requestBody["max_completion_tokens"] = 300;
-                requestBody["temperature"] = 0.1;
-
-                // If no API key is configured, skip the AI call and use the deterministic fallback.
-                if (string.IsNullOrEmpty(copilotKey))
-                {
-                    // do not attempt a network call without credentials
-                }
-                else
-                {
-                    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-                    using var contentCopilot = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-                    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", copilotKey);
-
-                    var resp = await http.PostAsync(copilotUrl, contentCopilot);
-                    var respBody = await resp.Content.ReadAsStringAsync();
-                    if (!resp.IsSuccessStatusCode)
-                    {
-                        Console.WriteLine($"[AI] Request failed: {resp.StatusCode}. Response: { (string.IsNullOrEmpty(respBody) ? "(empty)" : respBody.Length>2000? respBody.Substring(0,2000)+"...": respBody)}");
-                    }
-                    else
-                    {
-                        try
-                        {
-                            using var respDoc = JsonDocument.Parse(respBody);
-                            if (respDoc.RootElement.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
+                            // ChatResponse converts to string implicitly or via ToString
+                            var responseText = response?.ToString();
+                            if (!string.IsNullOrEmpty(responseText))
                             {
-                                var choice = choices[0];
-                                if (choice.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var contentProp) && contentProp.ValueKind == JsonValueKind.String)
-                                {
-                                    var text = contentProp.GetString();
-                                    if (!string.IsNullOrEmpty(text)) generatedSummary = text.Trim();
-                                }
-                                else if (choice.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
-                                {
-                                    var text = textProp.GetString();
-                                    if (!string.IsNullOrEmpty(text)) generatedSummary = text.Trim();
-                                }
-                            }
-                            else
-                            {
-                                Console.WriteLine($"[AI] Unexpected response shape; raw body: {(string.IsNullOrEmpty(respBody)?"(empty)": (respBody.Length>2000? respBody.Substring(0,2000)+"...": respBody))}");
+                                generatedSummary = responseText.Trim();
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[AI] Failed to parse response body: {ex.Message}. Raw: {(string.IsNullOrEmpty(respBody)?"(empty)": (respBody.Length>2000? respBody.Substring(0,2000)+"...": respBody))}");
-                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[AI] Failed to get completion: {ex.Message}");
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // network or parsing failure -> fallback
+                Console.WriteLine($"[AI] Error during code usage analysis: {ex.Message}");
             }
 
             if (string.IsNullOrEmpty(generatedSummary))
