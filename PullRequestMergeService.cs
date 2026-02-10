@@ -120,7 +120,7 @@ public class PullRequestMergeService
                                     using var httpClient = new System.Net.Http.HttpClient();
                                     httpClient.DefaultRequestHeaders.Add("User-Agent", "OssSecurityAgent");
                                     httpClient.DefaultRequestHeaders.Authorization = 
-                                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Config.GitHubToken);
+                                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _githubToken);
                                     
                                     var patchPayload = System.Text.Json.JsonSerializer.Serialize(new { state = "closed" });
                                     var content = new System.Net.Http.StringContent(patchPayload, System.Text.Encoding.UTF8, "application/json");
