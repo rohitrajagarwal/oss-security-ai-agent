@@ -58,7 +58,7 @@ public class GitOperations
         return success ? output.Trim() : string.Empty;
     }
 
-    private async Task<(bool success, string output)> RunGitCommandAsync(params string[] args)
+    public async Task<(bool success, string output)> RunGitCommandAsync(params string[] args)
     {
         var processInfo = new ProcessStartInfo("git")
         {

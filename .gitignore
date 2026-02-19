@@ -115,3 +115,6 @@ downloaded_files/
 # Test results
 TestResults/
 *.trx
+
+# Dependency graph files
+dependency-graph.json

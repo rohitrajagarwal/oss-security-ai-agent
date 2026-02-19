@@ -37,11 +37,31 @@ class Program
         // 2. SETUP HOST
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddSingleton<SecurityAgentTools>();
+        
+        // Register IChatClient if available
+        try
+        {
+            var chatClientFactory = new ChatClientFactory();
+            var chatClient = chatClientFactory.CreateChatClient();
+            if (chatClient != null)
+            {
+                builder.Services.AddSingleton<IChatClient>(chatClient);
+            }
+        }
+        catch
+        {
+            // If chat client cannot be initialized, continue without it
+            Console.WriteLine("Warning: IChatClient could not be initialized. AI features will be unavailable.");
+        }
+        
         var host = builder.Build();
 
-        // 2.0 Initialize the standardized chat client for all LLM calls
-        var chatClient = host.Services.GetRequiredService<IChatClient>();
-        SecurityAgentTools.SetChatClient(chatClient);
+        // 2.0 Initialize the standardized chat client for all LLM calls (optional)
+        var chatClientOptional = host.Services.GetService<IChatClient>();
+        if (chatClientOptional != null)
+        {
+            SecurityAgentTools.SetChatClient(chatClientOptional);
+        }
 
         // 2.1 get repo path from args
         var repoPath = Utility.ParseRepoPath(args) ?? string.Empty;
@@ -288,13 +308,9 @@ class Program
                     Console.WriteLine("Checking for vulnerabilities...");
                     var vulnerabilityJson = await SecurityAgentTools.CheckVulnerabilities(depList);
 
-                    // Step 2.5: Build dependency graph (must complete before reading it)
+                    // Step 2.5: Build dependency graph in memory
                     Console.WriteLine("Building dependency graph...");
-                    await SecurityAgentTools.BuildDependencyGraphAsync(repoPath);
-
-                    // Step 3: Load or create dependency graph
-                    var graphPath = Path.Combine(repoPath, "dependency-graph.json");
-                    var graph = await DependencyGraph.LoadFromFileAsync(graphPath) ?? new DependencyGraph();
+                    var graph = await SecurityAgentTools.BuildDependencyGraphAsync(repoPath);
 
                     // Step 4: Create remediation service and process vulnerabilities
                     var githubRepoUrl = Config.GitHubRepositoryUrl;

@@ -29,9 +29,6 @@ public class DependencyGraph
     [JsonPropertyName("metadata")]
     public Dictionary<string, PackageMetadata> Metadata { get; set; } = new();
 
-    [JsonPropertyName("generatedAt")]
-    public string GeneratedAt { get; set; } = DateTime.UtcNow.ToString("o");
-
     public void AddNode(string packageName, string version)
     {
         var key = $"{packageName}@{version}";
@@ -77,19 +74,6 @@ public class DependencyGraph
         var options = new JsonSerializerOptions { WriteIndented = true };
         return JsonSerializer.Serialize(this, options);
     }
-
-    public async Task SaveToFileAsync(string projectPath)
-    {
-        var filePath = Path.Combine(projectPath, "dependency-graph.json");
-        var dir = Path.GetDirectoryName(filePath);
-        if (dir != null && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(filePath, ToJson());
-    }
-
-    public static async Task<DependencyGraph?> LoadFromFileAsync(string filePath) =>
-        !File.Exists(filePath) ? null : 
-        JsonSerializer.Deserialize<DependencyGraph>(await File.ReadAllTextAsync(filePath));
 }
 
 public class PackageMetadata
@@ -105,9 +89,6 @@ public class PackageMetadata
 
     [JsonPropertyName("breakingChanges")]
     public BreakingChangeInfo? BreakingChanges { get; set; }
-
-    [JsonPropertyName("cachedAt")]
-    public DateTime CachedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class NuGetMetadata

@@ -17,7 +17,6 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.AI;
 
-
 public class SecurityAgentTools
 {
     private static IChatClient? _chatClient;
@@ -55,12 +54,14 @@ public class SecurityAgentTools
     }
 
     /// <summary>
-    /// Builds and saves the dependency graph with metadata to dependency-graph.json.
-    /// This is now awaitable to prevent race conditions where remediation reads the file immediately after scanning.
+    /// Builds the dependency graph with metadata in memory.
+    /// Returns the graph for immediate use without persisting to disk.
     /// </summary>
-    [Description("Builds a comprehensive dependency graph from the project's lock file and saves it to dependency-graph.json with metadata.")]
-    public static async Task BuildDependencyGraphAsync(string projectFilePath)
+    [Description("Builds a comprehensive dependency graph from the project's lock file with metadata.")]
+    public static async Task<DependencyGraph> BuildDependencyGraphAsync(string projectFilePath)
     {
+        var graph = new DependencyGraph();
+        
         try
         {
             var safePath = projectFilePath ?? string.Empty;
@@ -69,7 +70,7 @@ public class SecurityAgentTools
             var lockFile = LockFileUtilities.GetLockFile(assetsPath, null);
             
             if (lockFile == null)
-                return;
+                return graph;
 
             var packages = lockFile.Targets
                 .SelectMany(t => t.Libraries)
@@ -78,8 +79,6 @@ public class SecurityAgentTools
                 .Distinct()
                 .ToList();
 
-            var graph = new DependencyGraph();
-            
             // Add all packages as nodes with metadata
             foreach (var (name, version) in packages)
             {
@@ -138,15 +137,13 @@ public class SecurityAgentTools
                     }
                 }
             }
-
-            // Save to dependency-graph.json
-            await graph.SaveToFileAsync(dir);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Warning: Could not build dependency graph: {ex.Message}");
-            // Non-fatal - remediation can still work without the graph
         }
+        
+        return graph;
     }
 
     // --- TOOL B: SEARCH FOR VULNERABILITIES (OSV.dev) ---
