@@ -35,12 +35,23 @@ OSSSecurityAgent is a powerful command-line tool that:
 - Supports both markdown and plain text license formats
 - Gracefully handles packages without available license information
 
+### 🚀 Automated Security Fix PR Management
+- Scans for open pull requests with "Security fix:" prefix
+- Automatically merges approved security updates when conditions are met:
+  - All specified reviewers have approved the PR
+  - Status checks pass
+  - No merge conflicts
+  - PR is not in draft state
+- Provides detailed diagnostics for PRs that cannot be merged
+- Integrates with GitHub branch protection rules
+
 ### 🌐 GitHub Integration
 - Automatically detects GitHub repository URLs from package metadata
 - Downloads license files directly from GitHub repositories
 - Converts GitHub web URLs to raw file URLs for clean text extraction
 - Handles GitHub blob URLs with `?raw=true` parameter
 - Supports private repositories with GitHub authentication tokens
+- Manages pull request workflows with automated merging capabilities
 
 ## Prerequisites
 
@@ -71,17 +82,28 @@ dotnet run -- --repo <path-to-your-project> [options]
 
 ### Basic Scan and License Generation
 ```bash
-dotnet run --repo "/path/to/your/project" --generate-osl
+dotnet run -- --repo "/path/to/your/project" --generate-osl
 ```
 
 ### Skip Security Analysis
 ```bash
-dotnet run --repo "/path/to/your/project" --skip-scan-detect-analyse --generate-osl
+dotnet run -- --repo "/path/to/your/project" --skip-scan-detect-analyse --generate-osl
+```
+
+### Merge Approved Security Fix PRs
+```bash
+dotnet run -- --repo "/path/to/your/project" --merge-security-prs --github-token $GITHUB_TOKEN --approved-reviewers "reviewer1,reviewer2"
+```
+
+### Complete Workflow (Scan, Fix, and Merge)
+```bash
+dotnet run -- --repo "/path/to/your/project" --generate-osl --merge-security-prs --github-token $GITHUB_TOKEN
 ```
 
 ### Output Formats
 - License files are generated in the `licenses/` directory of the scanned project
 - Default filename format: `open-source-license-{timestamp}.txt`
+- Merge results are displayed in the console with detailed diagnostics
 
 ## Command-Line Options
 
@@ -90,17 +112,31 @@ dotnet run --repo "/path/to/your/project" --skip-scan-detect-analyse --generate-
 | `--repo <path>` | **Required.** Path to the .NET project root directory containing `.csproj` file |
 | `--generate-osl` | Generate Open Source License documentation file |
 | `--skip-scan-detect-analyse` | Skip security scanning and vulnerability detection (faster for license-only generation) |
+| `--merge-security-prs` | Automatically merge approved security fix pull requests |
+| `--github-token <token>` | GitHub personal access token for API authentication and PR operations |
+| `--approved-reviewers <list>` | Comma-separated list of GitHub usernames that must approve PRs before merging |
 
 ## Project Structure
 
 ```
 OssSecurityAgent/
-├── OpenSourceLicenseAIGenerator.cs  # Main license generation logic
-├── SecurityAgentTools.cs             # Utility methods and helpers
-├── OssSecurityAgent.csproj           # Project file
-├── Program.cs                        # Entry point
-├── .gitignore                        # Git ignore rules
-└── README.md                         # This file
+├── OpenSourceLicenseAIGenerator.cs   # Main license generation logic
+├── SecurityAgentTools.cs              # Utility methods and helpers
+├── PullRequestMergeService.cs         # Automated PR merge service
+├── VulnerabilityRemediationService.cs # Security fix remediation
+├── DependencyGraph.cs                 # Dependency analysis
+├── GitOperations.cs                   # Git operations wrapper
+├── BuildValidator.cs                  # Build validation utility
+├── ChatClientFactory.cs               # AI client factory
+├── Config.cs                          # Configuration management
+├── OssSecurityAgent.csproj            # Project file
+├── Program.cs                         # Entry point
+├── README.md                          # This file
+└── Models/                            # Data models
+    ├── Vulnerability.cs
+    ├── BuildResult.cs
+    ├── AiResolutionResponse.cs
+    └── BreakingChangeReport.cs
 ```
 
 ## Key Components
@@ -113,12 +149,29 @@ Core functionality for:
 - Formatting and combining license data
 - Generating the final OSS license document
 
+### PullRequestMergeService.cs
+Handles automated security fix PR management:
+- Scans open pull requests for "Security fix:" prefix
+- Validates PR readiness and merge conditions
+- Checks for reviewer approvals and status checks
+- Executes merge operations with conflict detection
+- Provides diagnostic information for merge failures
+
+### VulnerabilityRemediationService.cs
+Manages security vulnerability fixes:
+- Identifies applicable package updates
+- Generates remediation strategies using AI
+- Creates GitHub issues for tracking
+- Detects breaking changes in updates
+- Manages branch creation and PR generation
+
 ### SecurityAgentTools.cs
 Utility functions for:
 - File system operations
 - Project dependency discovery
 - Vulnerability detection and reporting
 - HTTP requests and API interactions
+- Build validation
 
 ## License Fetching Strategy
 
@@ -173,12 +226,45 @@ PackageName 2.0.0
 ...
 ```
 
+## Automated Security Fix PR Management
+
+The tool can automatically merge pull requests that contain security fixes for vulnerable dependencies:
+
+### PR Requirements for Auto-Merge
+- PR title must start with "Security fix:"
+- All specified approved reviewers must have approved the PR
+- All status checks must pass (GitHub Actions, CI/CD, etc.)
+- PR must not be in draft state
+- No merge conflicts present
+- Base branch must be mergeable
+
+### Configuration
+```bash
+# With environment variables
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+dotnet run -- --repo "/path/to/project" --merge-security-prs --approved-reviewers "alice,bob"
+
+# With command-line arguments
+dotnet run -- --repo "/path/to/project" --merge-security-prs \
+  --github-token ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --approved-reviewers "alice,bob"
+```
+
+### Merge Diagnostics
+When a PR cannot be merged, the tool provides detailed diagnostic information:
+- Current PR state (open, closed, draft)
+- Mergeable status and conflicts
+- List of pending approvals
+- Status check results (passed/failed)
+- Suggested remediation steps
+
 ## Error Handling
 
 - **Missing packages**: Gracefully skips packages that cannot be resolved
 - **Unavailable licenses**: Marks packages with "LICENSE TEXT NOT FOUND"
 - **Network errors**: Retries with exponential backoff
 - **Invalid responses**: Validates and filters HTML content from license files
+- **PR merge failures**: Provides detailed diagnostics and continues processing
 
 ## Performance
 
@@ -237,12 +323,14 @@ Contributions are welcome! Please:
 ## Future Enhancements
 
 - [ ] Support for Python, JavaScript, Java dependency ecosystems
-- [ ] Integration with vulnerability databases (CVE, CVSS scores)
-- [ ] Export to multiple formats (JSON, XML, SBOM)
+- [ ] Advanced vulnerability analytics and trend reporting
+- [ ] Export to multiple formats (JSON, XML, SBOM, CycloneDX)
 - [ ] License compliance checking and policy enforcement
 - [ ] Interactive UI/Dashboard
-- [ ] CI/CD pipeline integration templates
+- [ ] CI/CD pipeline integration templates (GitHub Actions, Azure Pipelines)
 - [ ] SPDX document generation
+- [ ] Custom remediation workflows
+- [ ] Dependency graph visualization
 
 ## License
 
@@ -256,6 +344,14 @@ For issues, questions, or suggestions:
 - Review the troubleshooting section above
 
 ## Changelog
+
+### Version 2.0.0 (Current)
+- Added automated security fix PR merging
+- Vulnerability remediation with AI-driven fix suggestions
+- Breaking change detection in package updates
+- Enhanced GitHub integration for PR management
+- Improved build validation and dependency graph analysis
+- Zero-warning production build
 
 ### Version 1.0.0
 - Initial release
@@ -272,6 +368,6 @@ For issues, questions, or suggestions:
 
 ---
 
-**Last Updated**: February 7, 2026
+**Last Updated**: February 18, 2026
 
 For the latest information and updates, visit the [project repository](https://github.com/yourusername/OSSSecurityAgent).
