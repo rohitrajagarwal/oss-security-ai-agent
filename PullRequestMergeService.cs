@@ -122,7 +122,7 @@ public class PullRequestMergeService
                             // Check for required status checks
                             try
                             {
-                                var statuses = await _gitHubClient.Repository.Status.GetCombined(owner, repo, prDetails.Head.Sha);
+                                var statuses = await _gitHubClient.Repository.Status.GetCombined(owner, repo, prDetails.Head?.Sha);
                                 if (statuses?.State != CommitState.Success)
                                 {
                                     Console.WriteLine($"  • Status Check State: {statuses?.State} ⚠️");

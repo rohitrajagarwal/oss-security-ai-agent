@@ -131,17 +131,17 @@ public static class Config
     }
 
     // Model Configuration Properties
-    public static string ModelName => Get("MODEL_NAME", "gpt-4.1-nano");
-    public static string ModelVersion => Get("MODEL_VERSION", "latest");
+    public static string ModelName => Get("MODEL_NAME", "gpt-4.1-nano")!;
+    public static string ModelVersion => Get("MODEL_VERSION", "latest")!;
     public static double ModelTemperature => GetDouble("MODEL_TEMPERATURE", 0.1);
     public static int ModelMaxTokens => GetInt("MODEL_MAX_TOKENS", 300);
 
     // API Configuration Properties
-    public static string ApiUrl => Get("COPILOT_API_URL", "https://api.openai.com/v1/chat/completions");
+    public static string ApiUrl => Get("COPILOT_API_URL", "https://api.openai.com/v1/chat/completions")!;
     public static string? ApiKey => Get("COPILOT_API_KEY") ?? Get("OPENAI_API_KEY");
     public static int ApiTimeout => GetInt("API_TIMEOUT", 15);
     public static int PackageFetchTimeout => GetInt("PACKAGE_FETCH_TIMEOUT", 30);
-    public static int OsvApiTimeout => GetInt("OSV_API_TIMEOUT", 10);
+    public static int OsvApiTimeout => GetInt("OSV_API_TIMEOUT", 10) is var timeout && timeout > 0 ? timeout : 10;
 
     // Prompt Configuration Properties
     public static string SystemPrompt => Get("SYSTEM_PROMPT") ?? throw new InvalidOperationException("SYSTEM_PROMPT environment variable is required");
