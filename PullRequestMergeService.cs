@@ -230,6 +230,7 @@ public class PullRequestMergeService
                         prResult.Status = "merged";
                         prResult.MergeCommitSha = mergeResult.Sha;
 
+
                         // Close associated issue after successful merge
                         await CloseAssociatedIssueAsync(owner, repo, pr);
 
@@ -400,7 +401,7 @@ public class PullRequestMergeService
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Config.GitHubToken);
                 
                 var jsonPayload = System.Text.Json.JsonSerializer.Serialize(new { body = comment });
-                var content = new System.Net.Http.StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                using var content = new System.Net.Http.StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
                 var response = await httpClient.PostAsync(
                     $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments",
                     content);
