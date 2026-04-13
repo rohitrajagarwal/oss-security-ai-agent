@@ -23,15 +23,29 @@ public static class Config
         {
             basePath ??= Directory.GetCurrentDirectory();
 
-            // Try to load api_key.env first, then .env
-            var apiKeyEnvPath = Path.Combine(basePath, "api_key.env");
-            var envPath = Path.Combine(basePath, ".env");
+            // Try to load from basePath, then search up the directory tree
+            var pathsToTry = new List<string> { basePath };
+            
+            // Also try searching up the directory tree for .env files
+            var currentDir = new DirectoryInfo(basePath);
+            while (currentDir.Parent != null)
+            {
+                pathsToTry.Add(currentDir.Parent.FullName);
+                currentDir = currentDir.Parent;
+            }
 
-            if (File.Exists(apiKeyEnvPath))
-                ParseEnvFile(apiKeyEnvPath);
+            // Try to load api_key.env first, then .env from each path
+            foreach (var path in pathsToTry)
+            {
+                var apiKeyEnvPath = Path.Combine(path, "api_key.env");
+                var envPath = Path.Combine(path, ".env");
 
-            if (File.Exists(envPath))
-                ParseEnvFile(envPath);
+                if (File.Exists(apiKeyEnvPath))
+                    ParseEnvFile(apiKeyEnvPath);
+
+                if (File.Exists(envPath))
+                    ParseEnvFile(envPath);
+            }
 
             _loaded = true;
         }

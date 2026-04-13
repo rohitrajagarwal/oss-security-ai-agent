@@ -22,6 +22,11 @@ class Program
 {
     static async Task Main(string[] args)
     {
+        // 0. LOAD CONFIGURATION
+        // Load config from the directory where this executable is running from
+        var executingDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? Directory.GetCurrentDirectory();
+        Config.Load(executingDir);
+
         // 1. PRE-HOST: Register MSBuild
         if (!MSBuildLocator.IsRegistered)
         {
@@ -90,6 +95,107 @@ class Program
         var remediate = args.Any(a => string.Equals(a, "--remediate", StringComparison.OrdinalIgnoreCase));
         var mergeApprovedFixes = args.Any(a => string.Equals(a, "--merge-approved-security-fixes", StringComparison.OrdinalIgnoreCase));
         var refreshMetadata = args.Any(a => string.Equals(a, "--refresh-metadata", StringComparison.OrdinalIgnoreCase));
+        
+        // Parse optional --package flag for per-package remediation
+        string? filterPackageName = null;
+        var packageFlagIndex = Array.FindIndex(args, a => string.Equals(a, "--package", StringComparison.OrdinalIgnoreCase));
+        if (packageFlagIndex >= 0 && packageFlagIndex + 1 < args.Length)
+        {
+            filterPackageName = args[packageFlagIndex + 1];
+        }
+
+        // Parse optional --target-version flag for per-package remediation
+        string? targetVersion = null;
+        var targetVersionIndex = Array.FindIndex(args, a => string.Equals(a, "--target-version", StringComparison.OrdinalIgnoreCase));
+        if (targetVersionIndex >= 0 && targetVersionIndex + 1 < args.Length)
+        {
+            targetVersion = args[targetVersionIndex + 1];
+        }
+
+        // Define local function to filter vulnerabilities by package
+        string FilterVulnerabilitiesByPackage(string vulnerabilityJson, string packageName)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(vulnerabilityJson);
+                var root = doc.RootElement;
+                var filtered = new Dictionary<string, JsonElement>();
+
+                foreach (var item in root.EnumerateObject())
+                {
+                    // Package keys are in format "packageName@version"
+                    if (item.Name.StartsWith(packageName + "@") || item.Name.Equals(packageName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        filtered[item.Name] = item.Value;
+                    }
+                }
+
+                // Convert back to JSON string
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                return JsonSerializer.Serialize(filtered, options);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not filter vulnerabilities: {ex.Message}. Returning original JSON.");
+                return vulnerabilityJson;
+            }
+        }
+
+        // Define local function to override fixed version for a specific package
+        string OverrideFixedVersionForPackage(string vulnerabilityJson, string packageName, string fixedVersion)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(vulnerabilityJson);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                    return vulnerabilityJson;
+
+                var patched = new Dictionary<string, object?>();
+
+                foreach (var packageEntry in doc.RootElement.EnumerateObject())
+                {
+                    var key = packageEntry.Name;
+                    var value = packageEntry.Value;
+
+                    var isTargetPackage = key.StartsWith(packageName + "@", StringComparison.OrdinalIgnoreCase)
+                                          || key.Equals(packageName, StringComparison.OrdinalIgnoreCase);
+
+                    if (!isTargetPackage || value.ValueKind != JsonValueKind.Array)
+                    {
+                        patched[key] = JsonSerializer.Deserialize<object>(value.GetRawText());
+                        continue;
+                    }
+
+                    var patchedVulns = new List<Dictionary<string, object?>>();
+                    foreach (var vuln in value.EnumerateArray())
+                    {
+                        if (vuln.ValueKind != JsonValueKind.Object)
+                        {
+                            patchedVulns.Add(new Dictionary<string, object?>());
+                            continue;
+                        }
+
+                        var vulnDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(vuln.GetRawText())
+                                       ?? new Dictionary<string, object?>();
+
+                        vulnDict["fixed_in"] = new List<string> { fixedVersion };
+                        vulnDict["fixed_version"] = fixedVersion;
+
+                        patchedVulns.Add(vulnDict);
+                    }
+
+                    patched[key] = patchedVulns;
+                }
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                return JsonSerializer.Serialize(patched, options);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not override fixed version: {ex.Message}. Using original vulnerability data.");
+                return vulnerabilityJson;
+            }
+        }
 
         // If merge or remediate mode, skip the default scan/detect/analyze workflow
         if (mergeApprovedFixes || remediate || refreshMetadata)
@@ -307,6 +413,19 @@ class Program
                     // Step 2: Check for vulnerabilities
                     Console.WriteLine("Checking for vulnerabilities...");
                     var vulnerabilityJson = await SecurityAgentTools.CheckVulnerabilities(depList);
+
+                    // Step 2.5: Filter vulnerabilities by package if --package flag provided
+                    if (!string.IsNullOrEmpty(filterPackageName))
+                    {
+                        Console.WriteLine($"Filtering vulnerabilities for package: {filterPackageName}");
+                        vulnerabilityJson = FilterVulnerabilitiesByPackage(vulnerabilityJson, filterPackageName);
+
+                        if (!string.IsNullOrEmpty(targetVersion))
+                        {
+                            Console.WriteLine($"Applying target version override for {filterPackageName}: {targetVersion}");
+                            vulnerabilityJson = OverrideFixedVersionForPackage(vulnerabilityJson, filterPackageName, targetVersion);
+                        }
+                    }
 
                     // Step 2.5: Build dependency graph in memory
                     Console.WriteLine("Building dependency graph...");

@@ -738,11 +738,13 @@ public class SecurityAgentTools
 
             // Build AI prompt context and let the model generate the risk summary.
             var referencingProjects = packageToProjects.TryGetValue(pkgName, out var projList) ? projList : new List<string>();
+            var latestStableFixedVersion = SelectLatestStableFixedVersion(vulnDetails);
 
             var promptContextFull = new
             {
                 package = pkgName,
                 version = pkgVersion,
+                latest_stable_fixed_version = latestStableFixedVersion,
                 vulnerabilities = vulnDetails,
                 usage_count = totalUsage,
                 top_locations = topLocations,
@@ -755,7 +757,7 @@ public class SecurityAgentTools
                 // Use standardized IChatClient if available
                 if (_chatClient != null)
                 {
-                    var systemPrompt = "You are a security analyst. Based only on the provided JSON context, produce a focused ~200-token risk summary explaining whether and how the reported vulnerabilities affect this codebase, and provide a concise recommendation label (Upgrade / Consider / Monitor / No action). Return the summary and recommendation as plain text.";
+                    var systemPrompt = "You are a security analyst. Based only on the provided JSON context, produce a focused ~200-token risk summary explaining whether and how the reported vulnerabilities affect this codebase. You MUST include an explicit recommendation in this exact format: Recommendation: Upgrade to <version>. Use latest_stable_fixed_version from the context as <version>. Do not suggest a pre-release version.";
                     var userPrompt = JsonSerializer.Serialize(promptContextFull);
 
                     var messages = new List<ChatMessage>
@@ -820,6 +822,12 @@ public class SecurityAgentTools
             }
             catch { aiRecommendation = string.Empty; }
 
+            // Enforce deterministic recommendation to keep AI summary aligned with remediation behavior.
+            if (!string.IsNullOrWhiteSpace(latestStableFixedVersion))
+            {
+                aiRecommendation = $"Upgrade to {latestStableFixedVersion}";
+            }
+
             if (string.IsNullOrWhiteSpace(aiRecommendation))
             {
                 // No AI recommendation available; leave empty
@@ -844,5 +852,64 @@ public class SecurityAgentTools
         };
 
         return JsonSerializer.Serialize(results, options);
+    }
+
+    private static string SelectLatestStableFixedVersion(List<Dictionary<string, object?>> vulnerabilityDetails)
+    {
+        var candidateVersions = new List<string>();
+
+        foreach (var vuln in vulnerabilityDetails)
+        {
+            if (!vuln.TryGetValue("fixed_in", out var fixedInValue) || fixedInValue is not IEnumerable<string> versions)
+                continue;
+
+            foreach (var version in versions)
+            {
+                if (!string.IsNullOrWhiteSpace(version))
+                    candidateVersions.Add(version.Trim());
+            }
+        }
+
+        if (!candidateVersions.Any())
+            return string.Empty;
+
+        var stableVersions = candidateVersions
+            .Where(v => !IsPreReleaseVersion(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var source = stableVersions.Any() ? stableVersions : candidateVersions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        return source
+            .OrderByDescending(v => new Version(NormalizeVersionForComparison(v)))
+            .FirstOrDefault() ?? string.Empty;
+    }
+
+    private static bool IsPreReleaseVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return false;
+
+        return version.Contains('-');
+    }
+
+    private static string NormalizeVersionForComparison(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return "0.0.0.0";
+
+        var cleaned = version.Trim().TrimStart('v', 'V');
+        var dashIndex = cleaned.IndexOf('-');
+        if (dashIndex >= 0)
+            cleaned = cleaned.Substring(0, dashIndex);
+
+        var match = Regex.Match(cleaned, @"^\d+(?:\.\d+){0,3}");
+        var numericPart = match.Success ? match.Value : "0.0.0";
+
+        var segments = numericPart.Split('.', StringSplitOptions.RemoveEmptyEntries).ToList();
+        while (segments.Count < 4)
+            segments.Add("0");
+
+        return string.Join('.', segments.Take(4));
     }
 }
