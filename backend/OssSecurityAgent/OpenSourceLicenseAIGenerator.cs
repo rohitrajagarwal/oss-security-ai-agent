@@ -63,8 +63,6 @@ public static class OpenSourceLicenseAIGenerator
                                 if (!string.IsNullOrWhiteSpace(v))
                                 {
                                     licenseUrl = v;
-                                    if (packageName == "Microsoft.CSharp")
-                                        Console.WriteLine($"[DEBUG NuGet] Found licenseUrl for {packageName}: {v}");
                                     if (v.Contains("github.com", StringComparison.OrdinalIgnoreCase))
                                         githubUrls.Add(v);
                                 }
@@ -93,9 +91,6 @@ public static class OpenSourceLicenseAIGenerator
         var handler = new HttpClientHandler { AllowAutoRedirect = true };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         
-        if (packageName == "Microsoft.CSharp")
-            Console.WriteLine($"[DEBUG] FetchPackageLicense called for {packageName} {packageVersion}");
-        
         var spdxIdentifiers = new[] { "MIT", "Apache-2.0", "GPL", "BSD", "ISC", "Apache", "GPL-3.0", "LGPL", "MPL" };
         
         try
@@ -113,9 +108,6 @@ public static class OpenSourceLicenseAIGenerator
                 return (name == "LICENSE" || name == "LICENCE" || name == "COPYING") && 
                        (ext == "" || ext == ".TXT" || ext == ".MD");
             }).ToList();
-            
-            if (packageName == "Microsoft.CSharp")
-                Console.WriteLine($"[DEBUG] Found {allLicenseFiles.Count} license files in nupkg");
 
             if (allLicenseFiles.Any())
             {
@@ -144,18 +136,13 @@ public static class OpenSourceLicenseAIGenerator
                     List<string> nugetApiUrls = new List<string>();
                     try
                     {
-                        if (packageName == "Microsoft.CSharp")
-                            Console.WriteLine($"[DEBUG] Calling FetchGitHubUrlsFromNugetAsync");
                         var nugetResult = await FetchGitHubUrlsFromNugetAsync(packageName, packageVersion, http);
                         nugetApiUrls = nugetResult.githubUrls;
                         nugetLicenseUrl = nugetResult.licenseUrl;
-                        if (packageName == "Microsoft.CSharp")
-                            Console.WriteLine($"[DEBUG] FetchGitHubUrlsFromNugetAsync returned: {nugetApiUrls.Count} urls, licenseUrl={nugetLicenseUrl}");
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        if (packageName == "Microsoft.CSharp")
-                            Console.WriteLine($"[DEBUG] FetchGitHubUrlsFromNugetAsync failed: {ex.Message}");
+                        // Non-fatal: continue without NuGet API URLs
                     }
                     githubUrls.AddRange(nugetApiUrls);
                     
@@ -185,10 +172,8 @@ public static class OpenSourceLicenseAIGenerator
                     // STEP 2: If no repository link found, try licenseUrl from NuGet registration JSON
                     if (!string.IsNullOrWhiteSpace(nugetLicenseUrl))
                     {
-                        Console.WriteLine($"[DEBUG STEP2] nugetLicenseUrl: {nugetLicenseUrl}");
                         if (nugetLicenseUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase))
                         {
-                            Console.WriteLine($"[DEBUG STEP2] URL contains github.com, calling FetchGithubLicenseAsync");
                             var licenseFromGithubUrl = await FetchGithubLicenseAsync(nugetLicenseUrl, http);
                             if (!string.IsNullOrWhiteSpace(licenseFromGithubUrl) && !IsHtmlContent(licenseFromGithubUrl))
                                 return licenseFromGithubUrl;
@@ -197,17 +182,14 @@ public static class OpenSourceLicenseAIGenerator
                         {
                             try
                             {
-                                Console.WriteLine($"[DEBUG STEP2] URL does not contain github.com, following redirect");
                                 // Use GET request to follow redirects and get final location
                                 var request = new HttpRequestMessage(HttpMethod.Get, nugetLicenseUrl);
                                 var response = await http.SendAsync(request);
                                 var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? nugetLicenseUrl;
-                                Console.WriteLine($"[DEBUG STEP2] After redirect: {finalUrl}");
                                 
                                 // If redirect led to GitHub, use GitHub handler
                                 if (finalUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    Console.WriteLine($"[DEBUG STEP2] Redirected to github.com, calling FetchGithubLicenseAsync");
                                     var licenseFromGithub = await FetchGithubLicenseAsync(finalUrl, http);
                                     if (!string.IsNullOrWhiteSpace(licenseFromGithub) && !IsHtmlContent(licenseFromGithub))
                                         return licenseFromGithub;
@@ -232,9 +214,6 @@ public static class OpenSourceLicenseAIGenerator
                         var licenseUrlValue = licenseUrlElement.Value?.Trim();
                         if (!string.IsNullOrWhiteSpace(licenseUrlValue) && licenseUrlValue.StartsWith("http"))
                         {
-                            if (packageName == "Microsoft.CSharp")
-                                Console.WriteLine($"[DEBUG STEP3] Found licenseUrl in nuspec: {licenseUrlValue}");
-                            
                             if (licenseUrlValue.Contains("github.com", StringComparison.OrdinalIgnoreCase))
                             {
                                 var licenseFromGithub = await FetchGithubLicenseAsync(licenseUrlValue, http);
@@ -249,9 +228,6 @@ public static class OpenSourceLicenseAIGenerator
                                     var request = new HttpRequestMessage(HttpMethod.Get, licenseUrlValue);
                                     var response = await http.SendAsync(request);
                                     var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? licenseUrlValue;
-                                    
-                                    if (packageName == "Microsoft.CSharp")
-                                        Console.WriteLine($"[DEBUG STEP3] After redirect: {finalUrl}");
                                     
                                     if (finalUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase))
                                     {
@@ -354,7 +330,6 @@ public static class OpenSourceLicenseAIGenerator
             {
                 // Simply append ?raw=true to get raw content directly
                 var rawUrl = repoUrl + "?raw=true";
-                Console.WriteLine($"[DEBUG] Fetching blob URL with ?raw=true: {rawUrl}");
                 try
                 {
                     var request = new HttpRequestMessage(HttpMethod.Get, rawUrl);
@@ -365,18 +340,13 @@ public static class OpenSourceLicenseAIGenerator
                     if (response.IsSuccessStatusCode)
                     {
                         var content = await response.Content.ReadAsStringAsync();
-                        Console.WriteLine($"[DEBUG] Blob URL response: {response.StatusCode}, content length: {content?.Length ?? 0}");
                         if (!string.IsNullOrWhiteSpace(content))
                             return content.Trim();
                     }
-                    else
-                    {
-                        Console.WriteLine($"[DEBUG] Blob URL failed: {response.StatusCode}");
-                    }
                 }
-                catch (Exception ex) 
-                { 
-                    Console.WriteLine($"[DEBUG] Blob URL error: {ex.Message}");
+                catch
+                {
+                    // Non-fatal: continue to repository search
                 }
             }
             

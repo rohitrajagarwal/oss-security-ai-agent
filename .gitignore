@@ -3,6 +3,7 @@
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+[Bb]uild/
 x64/
 x86/
 [Ww][Ii][Nn]32/
@@ -76,6 +77,7 @@ Thumbs.db
 .env.local
 .env.*.local
 .env.*.user
+.hybrid-remediation-system.env
 
 # Logs
 *.log
@@ -114,3 +116,6 @@ downloaded_files/
 # Test results
 TestResults/
 *.trx
+
+# Dependency graph files
+dependency-graph.json
