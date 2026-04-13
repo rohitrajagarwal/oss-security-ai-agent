@@ -432,11 +432,12 @@ class Program
                     var graph = await SecurityAgentTools.BuildDependencyGraphAsync(repoPath);
 
                     // Step 4: Create remediation service and process vulnerabilities
-                    var githubRepoUrl = Config.GitHubRepositoryUrl;
+                    var gitOps = new GitOperations(repoPath);
+                    var githubRepoUrl = await gitOps.GetRepositoryUrlAsync();
                     if (string.IsNullOrEmpty(githubRepoUrl))
                     {
-                        Console.WriteLine("Error: GITHUB_REPOSITORY_URL environment variable is not set.");
-                        Console.WriteLine("Please set it to your GitHub repository URL (e.g., https://github.com/owner/repo)");
+                        Console.WriteLine("Error: Unable to determine the GitHub repository URL from the git remote.");
+                        Console.WriteLine("Please ensure the target repo has an origin remote configured.");
                         return;
                     }
 

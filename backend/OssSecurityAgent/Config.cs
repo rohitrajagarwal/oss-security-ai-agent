@@ -163,8 +163,6 @@ public static class Config
     // GitHub Configuration
     public static string? GitHubToken => Get("GITHUB_TOKEN");
 
-    public static string? GitHubRepositoryUrl => Get("GITHUB_REPOSITORY_URL");
-
     public static List<string> GitHubReviewers
     {
         get

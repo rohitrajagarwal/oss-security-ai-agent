@@ -104,7 +104,6 @@ COPILOT_API_URL=https://api.openai.com/v1/chat/completions
 COPILOT_API_KEY=your_openai_api_key_here
 
 GITHUB_TOKEN=your_github_pat_here
-GITHUB_REPOSITORY_URL=https://github.com/owner/repo.git
 GITHUB_REVIEWERS=username1,username2
 ```
 
