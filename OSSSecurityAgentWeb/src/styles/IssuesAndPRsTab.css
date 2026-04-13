@@ -1,0 +1,214 @@
+.issues-prs-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.tab-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.tab-message-success {
+  background: #f0fff4;
+  color: #22543d;
+  border-color: #9ae6b4;
+}
+
+.tab-message-error {
+  background: #fff5f5;
+  color: #9b2c2c;
+  border-color: #feb2b2;
+}
+
+.pr-action-message {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.pr-action-pending {
+  background: #ebf8ff;
+  color: #2c5282;
+  border: 1px solid #90cdf4;
+}
+
+.pr-action-success {
+  background: #f0fff4;
+  color: #22543d;
+  border: 1px solid #9ae6b4;
+}
+
+.pr-action-error {
+  background: #fff5f5;
+  color: #9b2c2c;
+  border: 1px solid #feb2b2;
+}
+
+.prs-section,
+.issues-section {
+  background: #f7fafc;
+  border-radius: 8px;
+  padding: 20px;
+  border-left: 4px solid #667eea;
+}
+
+.prs-section h2,
+.issues-section h2 {
+  color: #2d3748;
+  margin-bottom: 20px;
+  font-size: 1.3rem;
+}
+
+.pr-list,
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.pr-card,
+.issue-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+  transition: all 0.3s ease;
+}
+
+.pr-card:hover,
+.issue-card:hover {
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+}
+
+.pr-header,
+.issue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.pr-header h3,
+.issue-header h3 {
+  margin: 0;
+  color: #2d3748;
+  font-size: 1.1rem;
+}
+
+.pr-header h3 a,
+.issue-header h3 a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.pr-header h3 a:hover,
+.issue-header h3 a:hover {
+  text-decoration: underline;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: white;
+}
+
+.status-open {
+  background: #48bb78;
+}
+
+.status-merged {
+  background: #667eea;
+}
+
+.status-closed {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+
+.pr-details,
+.issue-details {
+  color: #4a5568;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.pr-details p,
+.issue-details p {
+  margin: 5px 0;
+}
+
+.pr-details code,
+.issue-details code {
+  background: #edf2f7;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+}
+
+.status-merged {
+  display: inline-block;
+  padding: 10px 20px;
+  background: #edf2f7;
+  color: #667eea;
+  border-radius: 6px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pr-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.pr-actions .btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.pr-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.status-ready {
+  background: #48bb78;
+  color: white;
+}
+
+.status-approved {
+  background: #4299e1;
+  color: white;
+}
+
+.status-awaiting {
+  background: #a0aec0;
+  color: white;
+}
+
+.status-outofdate {
+  background: #ed8936;
+  color: white;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #718096;
+}
+
+.empty-state p {
+  font-size: 1rem;
+  margin: 10px 0;
+}

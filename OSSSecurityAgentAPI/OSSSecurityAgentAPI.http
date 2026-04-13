@@ -1,0 +1,6 @@
+@OSSSecurityAgentAPI_HostAddress = http://localhost:5058
+
+GET {{OSSSecurityAgentAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

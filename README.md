@@ -1,373 +1,280 @@
 # OSSSecurityAgent
 
-A comprehensive .NET tool for analyzing project dependencies, identifying security vulnerabilities, and generating Open Source Software (OSS) license documentation.
+OSSSecurityAgent is a .NET-based security automation stack for analyzing dependencies, identifying vulnerable packages, generating remediation pull requests, and producing OSS license documentation.
 
-## Overview
+It contains three working parts:
 
-OSSSecurityAgent is a powerful command-line tool that:
-- **Scans .NET projects** for all NuGet package dependencies
-- **Identifies security vulnerabilities** in dependencies using security advisories
-- **Generates OSS license files** with complete license text for all third-party packages
-- **Supports multiple license sources** (NuGet API, GitHub repositories, embedded .nuspec files, SPDX identifiers)
-- **Handles complex license URLs** including HTTP redirects and GitHub blob URLs
+- **OssSecurityAgent**: core .NET CLI engine
+- **OSSSecurityAgentAPI**: ASP.NET Core backend for the web workflow
+- **OSSSecurityAgentWeb**: React frontend for analysis and remediation actions
+
+## What it does
+
+- Scans .NET projects for NuGet dependencies
+- Detects known vulnerabilities and groups them by package
+- Uses AI-assisted summaries and deterministic fixed-version selection
+- Generates remediation branches, issues, and pull requests
+- Approves and merges security fixes after reviewer approval
+- Deletes merged PR branches after successful merge
+- Generates OSS license notices for third-party packages
+
+## Repository layout
+
+```text
+OssSecurityAgent/
+├── BuildValidator.cs
+├── ChatClientFactory.cs
+├── Config.cs
+├── DependencyGraph.cs
+├── GitOperations.cs
+├── OpenSourceLicenseAIGenerator.cs
+├── Program.cs
+├── PullRequestMergeService.cs
+├── SecurityAgentTools.cs
+├── Utility.cs
+├── VulnerabilityRemediationService.cs
+├── Models/
+└── README.md
+
+OSSSecurityAgentAPI/
+├── Controllers/
+├── Program.cs
+└── appsettings*.json
+
+OSSSecurityAgentWeb/
+├── src/
+├── public/
+└── package.json
+```
 
 ## Features
 
-### 📦 Dependency Analysis
-- Automatically detects all NuGet package dependencies in your project
-- Retrieves package metadata from the official NuGet registry
-- Supports project file formats: `.csproj`, `.vbproj`, `.fsproj`
+### CLI engine
 
-### 🔒 Security Scanning
-- Identifies known security vulnerabilities in dependencies
-- Cross-references packages against security advisory databases
-- Provides vulnerability details and severity levels
-- Suggests remediation and updates
+- Dependency discovery from project assets and project files
+- Vulnerability lookup and analysis
+- AI-generated remediation summaries
+- License notice generation
+- Git-based remediation branch creation
+- PR and issue creation for security fixes
+- Merge validation for approved security PRs
 
-### 📋 OSS License Generation
-- Generates comprehensive third-party license documentation
-- Automatically fetches license text from multiple sources in priority order:
-  1. GitHub repositories (via repository metadata)
-  2. NuGet API registration data
-  3. Package .nuspec files
-  4. SPDX identifier mappings
-- Handles complex license URLs including HTTP redirects and GitHub blob URLs
-- Supports both markdown and plain text license formats
-- Gracefully handles packages without available license information
+### API backend
 
-### 🚀 Automated Security Fix PR Management
-- Scans for open pull requests with "Security fix:" prefix
-- Automatically merges approved security updates when conditions are met:
-  - All specified reviewers have approved the PR
-  - Status checks pass
-  - No merge conflicts
-  - PR is not in draft state
-- Provides detailed diagnostics for PRs that cannot be merged
-- Integrates with GitHub branch protection rules
+- REST endpoints for analysis and remediation
+- GitHub integration for issues, PRs, approvals, merges, and branch cleanup
+- CORS support for the web frontend
+- Orchestration of the CLI engine from the web app
 
-### 🌐 GitHub Integration
-- Automatically detects GitHub repository URLs from package metadata
-- Downloads license files directly from GitHub repositories
-- Converts GitHub web URLs to raw file URLs for clean text extraction
-- Handles GitHub blob URLs with `?raw=true` parameter
-- Supports private repositories with GitHub authentication tokens
-- Manages pull request workflows with automated merging capabilities
+### Web frontend
+
+- Repository URL input
+- Dependency/vulnerability view by package
+- Remediation trigger per package
+- Issues and PR tracking
+- Approve and merge workflow
 
 ## Prerequisites
 
-- **.NET 10.0** or higher
-- **C# 13** compatible compiler
-- Access to NuGet registry (usually public)
-- (Optional) GitHub API token for enhanced rate limiting and private repository access
+- .NET 10 SDK
+- Node.js 16+ and npm
+- Git
+- GitHub Personal Access Token with access to the target repository
 
-## Installation
+Recommended GitHub token permissions:
 
-### Clone the Repository
+- `repo` for classic PATs
+- For fine-grained PATs: read/write access to contents, pull requests, and issues
+
+## Quick start
+
+### 1. Configure environment
+
+Create or update [OssSecurityAgent/.env](OssSecurityAgent/.env) with your local values.
+
+```env
+MODEL_NAME=gpt-4.1-nano
+MODEL_VERSION=latest
+MODEL_TEMPERATURE=0.1
+MODEL_MAX_TOKENS=300
+
+COPILOT_API_URL=https://api.openai.com/v1/chat/completions
+COPILOT_API_KEY=your_openai_api_key_here
+
+GITHUB_TOKEN=your_github_pat_here
+GITHUB_REPOSITORY_URL=https://github.com/owner/repo.git
+GITHUB_REVIEWERS=username1,username2
+```
+
+### 2. Run the API
+
 ```bash
-git clone https://github.com/yourusername/OSSSecurityAgent.git
+cd OSSSecurityAgentAPI
+dotnet run
+```
+
+### 3. Run the web app
+
+```bash
+cd OSSSecurityAgentWeb
+npm install
+npm start
+```
+
+### 4. Run the CLI directly
+
+```bash
 cd OssSecurityAgent
+dotnet run -- --repo "/path/to/project" --generate-osl
 ```
 
-### Build the Project
+## Common workflows
+
+### Analyze a repository
+
 ```bash
-dotnet build
+dotnet run -- --repo "/path/to/project" --skip-scan-detect-analyse --generate-osl
 ```
 
-### Run the Tool
+### Remediate vulnerabilities
+
 ```bash
-dotnet run -- --repo <path-to-your-project> [options]
+dotnet run -- --repo "/path/to/project" --remediate
 ```
 
-## Usage
+### Merge approved security fixes
 
-### Basic Scan and License Generation
 ```bash
-dotnet run -- --repo "/path/to/your/project" --generate-osl
+dotnet run -- --repo "/path/to/project" --merge-approved-security-fixes
 ```
 
-### Skip Security Analysis
+### Generate OSS license documentation
+
 ```bash
-dotnet run -- --repo "/path/to/your/project" --skip-scan-detect-analyse --generate-osl
+dotnet run -- --repo "/path/to/project" --generate-osl
 ```
 
-### Merge Approved Security Fix PRs
-```bash
-dotnet run -- --repo "/path/to/your/project" --merge-security-prs --github-token $GITHUB_TOKEN --approved-reviewers "reviewer1,reviewer2"
-```
-
-### Complete Workflow (Scan, Fix, and Merge)
-```bash
-dotnet run -- --repo "/path/to/your/project" --generate-osl --merge-security-prs --github-token $GITHUB_TOKEN
-```
-
-### Output Formats
-- License files are generated in the `licenses/` directory of the scanned project
-- Default filename format: `open-source-license-{timestamp}.txt`
-- Merge results are displayed in the console with detailed diagnostics
-
-## Command-Line Options
+## CLI options
 
 | Option | Description |
-|--------|-------------|
-| `--repo <path>` | **Required.** Path to the .NET project root directory containing `.csproj` file |
-| `--generate-osl` | Generate Open Source License documentation file |
-| `--skip-scan-detect-analyse` | Skip security scanning and vulnerability detection (faster for license-only generation) |
-| `--merge-security-prs` | Automatically merge approved security fix pull requests |
-| `--github-token <token>` | GitHub personal access token for API authentication and PR operations |
-| `--approved-reviewers <list>` | Comma-separated list of GitHub usernames that must approve PRs before merging |
+|---|---|
+| `--repo <path>` | Path to the target .NET project root |
+| `--generate-osl` | Generate OSS license documentation |
+| `--skip-scan-detect-analyse` | Skip vulnerability analysis for faster license-only runs |
+| `--remediate` | Create remediation branches and PRs for vulnerable packages |
+| `--merge-approved-security-fixes` | Merge approved security PRs |
+| `--refresh-metadata` | Refresh dependency graph metadata |
+| `--github-token <token>` | GitHub token for API access |
+| `--approved-reviewers <list>` | Required approvers for merge workflows |
+| `--package <name>` | Target a single package for remediation |
+| `--target-version <version>` | Override the fixed version used for remediation |
 
-## Project Structure
+## API endpoints
 
-```
-OssSecurityAgent/
-├── OpenSourceLicenseAIGenerator.cs   # Main license generation logic
-├── SecurityAgentTools.cs              # Utility methods and helpers
-├── PullRequestMergeService.cs         # Automated PR merge service
-├── VulnerabilityRemediationService.cs # Security fix remediation
-├── DependencyGraph.cs                 # Dependency analysis
-├── GitOperations.cs                   # Git operations wrapper
-├── BuildValidator.cs                  # Build validation utility
-├── ChatClientFactory.cs               # AI client factory
-├── Config.cs                          # Configuration management
-├── OssSecurityAgent.csproj            # Project file
-├── Program.cs                         # Entry point
-├── README.md                          # This file
-└── Models/                            # Data models
-    ├── Vulnerability.cs
-    ├── BuildResult.cs
-    ├── AiResolutionResponse.cs
-    └── BreakingChangeReport.cs
-```
+### Analyze
 
-## Key Components
+`GET /api/remediation/analyze?repo=<url>`
 
-### OpenSourceLicenseAIGenerator.cs
-Core functionality for:
-- Fetching package metadata from NuGet API
-- Extracting license information from multiple sources
-- Downloading license files from GitHub repositories
-- Formatting and combining license data
-- Generating the final OSS license document
+Returns vulnerabilities grouped by package.
 
-### PullRequestMergeService.cs
-Handles automated security fix PR management:
-- Scans open pull requests for "Security fix:" prefix
-- Validates PR readiness and merge conditions
-- Checks for reviewer approvals and status checks
-- Executes merge operations with conflict detection
-- Provides diagnostic information for merge failures
+### Remediate package
 
-### VulnerabilityRemediationService.cs
-Manages security vulnerability fixes:
-- Identifies applicable package updates
-- Generates remediation strategies using AI
-- Creates GitHub issues for tracking
-- Detects breaking changes in updates
-- Manages branch creation and PR generation
+`POST /api/remediation/remediate`
 
-### SecurityAgentTools.cs
-Utility functions for:
-- File system operations
-- Project dependency discovery
-- Vulnerability detection and reporting
-- HTTP requests and API interactions
-- Build validation
-
-## License Fetching Strategy
-
-The tool uses a four-step approach to find license information:
-
-### STEP 1: GitHub Repository URLs
-Attempts to fetch LICENSE files directly from GitHub repositories identified in package metadata (projectUrl, repository element, or repositoryUrl from NuGet API).
-
-### STEP 2: NuGet API License URLs
-Checks the NuGet registration data for licenseUrl. If the URL redirects to GitHub, it automatically extracts the raw file URL.
-
-### STEP 3: .nuspec File License URLs
-Parses the package's .nuspec XML file for the `<licenseUrl>` tag. Follows HTTP redirects and handles GitHub blob URLs.
-
-### STEP 4: .nuspec License Element
-Extracts the `<license>` element from .nuspec files, supporting:
-- Inline license text
-- URLs (processed like STEP 3)
-- SPDX license identifiers
-
-## Configuration
-
-### GitHub Authentication (Optional)
-For enhanced rate limiting and private repository access, set the `GITHUB_TOKEN` environment variable:
-
-```bash
-export GITHUB_TOKEN=your_github_personal_access_token
+```json
+{
+  "repoUrl": "https://github.com/owner/repo.git",
+  "packageName": "package-name",
+  "recommendedVersion": "1.2.3"
+}
 ```
 
-Or in `.env` file:
-```
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-```
+### List issues and PRs
 
-## Output Example
+`GET /api/remediation/issues-and-prs?repo=<url>`
 
-The generated OSL file contains:
+### Approve PR
 
-```
-THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+`POST /api/remediation/approve-pr`
 
-Do Not Translate or Localize
-
-This project incorporates components from the projects listed below...
-
-PackageName 1.0.0
-[Full License Text]
-
-PackageName 2.0.0
-[Full License Text]
-
-...
+```json
+{
+  "repoUrl": "https://github.com/owner/repo.git",
+  "prNumber": 123
+}
 ```
 
-## Automated Security Fix PR Management
+### Merge PR
 
-The tool can automatically merge pull requests that contain security fixes for vulnerable dependencies:
+`POST /api/remediation/merge-pr`
 
-### PR Requirements for Auto-Merge
-- PR title must start with "Security fix:"
-- All specified approved reviewers must have approved the PR
-- All status checks must pass (GitHub Actions, CI/CD, etc.)
-- PR must not be in draft state
-- No merge conflicts present
-- Base branch must be mergeable
+The merge flow:
 
-### Configuration
-```bash
-# With environment variables
-export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-dotnet run -- --repo "/path/to/project" --merge-security-prs --approved-reviewers "alice,bob"
+- validates approval state
+- merges the PR
+- closes the linked issue when present
+- deletes the source branch for same-repo PRs after a successful merge
 
-# With command-line arguments
-dotnet run -- --repo "/path/to/project" --merge-security-prs \
-  --github-token ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-  --approved-reviewers "alice,bob"
-```
+## Security model
 
-### Merge Diagnostics
-When a PR cannot be merged, the tool provides detailed diagnostic information:
-- Current PR state (open, closed, draft)
-- Mergeable status and conflicts
-- List of pending approvals
-- Status check results (passed/failed)
-- Suggested remediation steps
+- Tokens are loaded from environment or local `.env` files
+- `.env` is ignored by git
+- No token values should be committed
+- Use repository-scoped or fine-grained PATs when possible
+- Rotate any token that has been exposed in logs or files
 
-## Error Handling
+## Important files
 
-- **Missing packages**: Gracefully skips packages that cannot be resolved
-- **Unavailable licenses**: Marks packages with "LICENSE TEXT NOT FOUND"
-- **Network errors**: Retries with exponential backoff
-- **Invalid responses**: Validates and filters HTML content from license files
-- **PR merge failures**: Provides detailed diagnostics and continues processing
+- [OssSecurityAgent/Program.cs](OssSecurityAgent/Program.cs) - CLI entry point
+- [OssSecurityAgent/SecurityAgentTools.cs](OssSecurityAgent/SecurityAgentTools.cs) - dependency and AI analysis
+- [OssSecurityAgent/VulnerabilityRemediationService.cs](OssSecurityAgent/VulnerabilityRemediationService.cs) - remediation workflow
+- [OssSecurityAgent/PullRequestMergeService.cs](OssSecurityAgent/PullRequestMergeService.cs) - merge logic
+- [OSSSecurityAgentAPI/Controllers/RemediationController.cs](OSSSecurityAgentAPI/Controllers/RemediationController.cs) - web API orchestration
+- [OSSSecurityAgentWeb/src/App.js](OSSSecurityAgentWeb/src/App.js) - frontend entry point
 
-## Performance
+## Output locations
 
-- Uses parallel processing with a semaphore to limit concurrent requests
-- Configurable timeout (default: 30 seconds per package)
-- Efficient caching of HTTP responses
-- Memory-optimized streaming for large files
-
-## Security Considerations
-
-### Data Privacy
-- No personal or sensitive project data is transmitted
-- Only package names and versions are used for lookups
-- All communications use HTTPS
-
-### Dependency Security
-- Uses only official NuGet and GitHub APIs
-- Validates SSL certificates
-- Implements timeout protections
-
-### Best Practices
-- Run on a clean/private machine for sensitive projects
-- Keep GitHub token secure and use repository-scoped tokens
-- Review generated license files before publication
-- Update dependencies regularly
+- Generated license notices are written to the target project’s `licenses/` folder
+- Dependency graph metadata is cached as `dependency-graph.json`
+- Remediation branches are created in git and pushed to GitHub
 
 ## Troubleshooting
 
-### Issue: "Build succeeded. 0 Error(s)" but licenses not generated
-- Ensure the `--generate-osl` flag is provided
-- Check that the project path is correct and contains a `.csproj` file
+### Token errors
 
-### Issue: Some packages show "LICENSE TEXT NOT FOUND"
-- Some packages may not have published licenses
-- Check the package on NuGet.org manually for license information
-- Consider checking the package's GitHub repository directly
+- Verify `GITHUB_TOKEN` is set
+- Check repository access on the token
+- Use a fine-grained PAT for a single repo or an org-scoped GitHub App for multiple repos
 
-### Issue: GitHub API rate limiting
-- Set a `GITHUB_TOKEN` environment variable for authenticated requests
-- Authenticated requests have higher rate limits (5,000 vs 60 requests/hour)
+### API connection issues
 
-### Issue: Timeout errors
-- Check your internet connection
-- Try running again (implements retry logic)
-- Some GitHub URLs may be temporarily unavailable
+- Confirm the API is running
+- Verify frontend CORS origin matches the API URL
 
-## Contributing
+### Remediation issues
 
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Ensure the project builds locally
+- Confirm the package has a fixed version available
+- Review the merge diagnostics if a PR does not merge
 
-## Future Enhancements
+### License generation issues
 
-- [ ] Support for Python, JavaScript, Java dependency ecosystems
-- [ ] Advanced vulnerability analytics and trend reporting
-- [ ] Export to multiple formats (JSON, XML, SBOM, CycloneDX)
-- [ ] License compliance checking and policy enforcement
-- [ ] Interactive UI/Dashboard
-- [ ] CI/CD pipeline integration templates (GitHub Actions, Azure Pipelines)
-- [ ] SPDX document generation
-- [ ] Custom remediation workflows
-- [ ] Dependency graph visualization
+- Confirm the target repo contains a supported project file
+- Check network access to NuGet and GitHub
+
+## Development notes
+
+- The stack is designed to be run locally against a target repository
+- Web actions call the API, which then invokes the CLI engine
+- GitHub actions are performed only when the configured token has the required access
+
+## Contribution guidance
+
+1. Create a feature branch
+2. Make focused changes
+3. Build and test locally
+4. Open a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For issues, questions, or suggestions:
-- Create an issue on the GitHub repository
-- Check existing issues for solutions
-- Review the troubleshooting section above
-
-## Changelog
-
-### Version 2.0.0 (Current)
-- Added automated security fix PR merging
-- Vulnerability remediation with AI-driven fix suggestions
-- Breaking change detection in package updates
-- Enhanced GitHub integration for PR management
-- Improved build validation and dependency graph analysis
-- Zero-warning production build
-
-### Version 1.0.0
-- Initial release
-- Basic dependency scanning
-- OSS license file generation
-- GitHub repository integration
-- HTTP redirect handling for license URLs
-
-## Acknowledgments
-
-- Built with .NET 10.0
-- Uses official NuGet and GitHub APIs
-- Community feedback and contributions
-
----
-
-**Last Updated**: February 18, 2026
-
-For the latest information and updates, visit the [project repository](https://github.com/yourusername/OSSSecurityAgent).
+MIT
