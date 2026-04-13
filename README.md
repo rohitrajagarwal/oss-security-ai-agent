@@ -4,9 +4,9 @@ OSSSecurityAgent is a .NET-based security automation stack for analyzing depende
 
 It contains three working parts:
 
-- **OssSecurityAgent**: core .NET CLI engine
-- **OSSSecurityAgentAPI**: ASP.NET Core backend for the web workflow
-- **OSSSecurityAgentWeb**: React frontend for analysis and remediation actions
+- **backend/OssSecurityAgent**: core .NET CLI engine
+- **backend/OSSSecurityAgentAPI**: ASP.NET Core backend for the web workflow
+- **frontend/OSSSecurityAgentWeb**: React frontend for analysis and remediation actions
 
 ## What it does
 
@@ -21,52 +21,54 @@ It contains three working parts:
 ## Repository layout
 
 ```text
-OssSecurityAgent/
-├── BuildValidator.cs
-├── ChatClientFactory.cs
-├── Config.cs
-├── DependencyGraph.cs
-├── GitOperations.cs
-├── OpenSourceLicenseAIGenerator.cs
-├── Program.cs
-├── PullRequestMergeService.cs
-├── SecurityAgentTools.cs
-├── Utility.cs
-├── VulnerabilityRemediationService.cs
-├── Models/
-└── README.md
+backend/
+├── OssSecurityAgent/
+│   ├── BuildValidator.cs
+│   ├── ChatClientFactory.cs
+│   ├── Config.cs
+│   ├── DependencyGraph.cs
+│   ├── GitOperations.cs
+│   ├── OpenSourceLicenseAIGenerator.cs
+│   ├── Program.cs
+│   ├── PullRequestMergeService.cs
+│   ├── SecurityAgentTools.cs
+│   ├── Utility.cs
+│   ├── VulnerabilityRemediationService.cs
+│   ├── Models/
+│   └── OssSecurityAgent.csproj
+└── OSSSecurityAgentAPI/
+  ├── Controllers/
+  ├── Program.cs
+  └── appsettings*.json
 
-OSSSecurityAgentAPI/
-├── Controllers/
-├── Program.cs
-└── appsettings*.json
+frontend/
+└── OSSSecurityAgentWeb/
+  ├── src/
+  backend/
+  ├── OssSecurityAgent/
+  │   ├── BuildValidator.cs
+  │   ├── ChatClientFactory.cs
+  │   ├── Config.cs
+  │   ├── DependencyGraph.cs
+  │   ├── GitOperations.cs
+  │   ├── OpenSourceLicenseAIGenerator.cs
+  │   ├── Program.cs
+  │   ├── PullRequestMergeService.cs
+  │   ├── SecurityAgentTools.cs
+  │   ├── Utility.cs
+  │   ├── VulnerabilityRemediationService.cs
+  │   ├── Models/
+  │   └── OssSecurityAgent.csproj
+  └── OSSSecurityAgentAPI/
+    ├── Controllers/
+    ├── Program.cs
+    └── appsettings*.json
 
-OSSSecurityAgentWeb/
-├── src/
-├── public/
-└── package.json
-```
-
-## Features
-
-### CLI engine
-
-- Dependency discovery from project assets and project files
-- Vulnerability lookup and analysis
-- AI-generated remediation summaries
-- License notice generation
-- Git-based remediation branch creation
-- PR and issue creation for security fixes
-- Merge validation for approved security PRs
-
-### API backend
-
-- REST endpoints for analysis and remediation
-- GitHub integration for issues, PRs, approvals, merges, and branch cleanup
-- CORS support for the web frontend
-- Orchestration of the CLI engine from the web app
-
-### Web frontend
+  frontend/
+  └── OSSSecurityAgentWeb/
+    ├── src/
+    ├── public/
+    └── package.json
 
 - Repository URL input
 - Dependency/vulnerability view by package
@@ -109,14 +111,14 @@ GITHUB_REVIEWERS=username1,username2
 ### 2. Run the API
 
 ```bash
-cd OSSSecurityAgentAPI
+cd backend/OSSSecurityAgentAPI
 dotnet run
 ```
 
 ### 3. Run the web app
 
 ```bash
-cd OSSSecurityAgentWeb
+cd frontend/OSSSecurityAgentWeb
 npm install
 npm start
 ```
@@ -124,7 +126,7 @@ npm start
 ### 4. Run the CLI directly
 
 ```bash
-cd OssSecurityAgent
+cd backend/OssSecurityAgent
 dotnet run -- --repo "/path/to/project" --generate-osl
 ```
 
@@ -133,24 +135,28 @@ dotnet run -- --repo "/path/to/project" --generate-osl
 ### Analyze a repository
 
 ```bash
+cd backend/OssSecurityAgent
 dotnet run -- --repo "/path/to/project" --skip-scan-detect-analyse --generate-osl
 ```
 
 ### Remediate vulnerabilities
 
 ```bash
+cd backend/OssSecurityAgent
 dotnet run -- --repo "/path/to/project" --remediate
 ```
 
 ### Merge approved security fixes
 
 ```bash
+cd backend/OssSecurityAgent
 dotnet run -- --repo "/path/to/project" --merge-approved-security-fixes
 ```
 
 ### Generate OSS license documentation
 
 ```bash
+cd backend/OssSecurityAgent
 dotnet run -- --repo "/path/to/project" --generate-osl
 ```
 
@@ -225,12 +231,12 @@ The merge flow:
 
 ## Important files
 
-- [OssSecurityAgent/Program.cs](OssSecurityAgent/Program.cs) - CLI entry point
-- [OssSecurityAgent/SecurityAgentTools.cs](OssSecurityAgent/SecurityAgentTools.cs) - dependency and AI analysis
-- [OssSecurityAgent/VulnerabilityRemediationService.cs](OssSecurityAgent/VulnerabilityRemediationService.cs) - remediation workflow
-- [OssSecurityAgent/PullRequestMergeService.cs](OssSecurityAgent/PullRequestMergeService.cs) - merge logic
-- [OSSSecurityAgentAPI/Controllers/RemediationController.cs](OSSSecurityAgentAPI/Controllers/RemediationController.cs) - web API orchestration
-- [OSSSecurityAgentWeb/src/App.js](OSSSecurityAgentWeb/src/App.js) - frontend entry point
+- [backend/OssSecurityAgent/Program.cs](backend/OssSecurityAgent/Program.cs) - CLI entry point
+- [backend/OssSecurityAgent/SecurityAgentTools.cs](backend/OssSecurityAgent/SecurityAgentTools.cs) - dependency and AI analysis
+- [backend/OssSecurityAgent/VulnerabilityRemediationService.cs](backend/OssSecurityAgent/VulnerabilityRemediationService.cs) - remediation workflow
+- [backend/OssSecurityAgent/PullRequestMergeService.cs](backend/OssSecurityAgent/PullRequestMergeService.cs) - merge logic
+- [backend/OSSSecurityAgentAPI/Controllers/RemediationController.cs](backend/OSSSecurityAgentAPI/Controllers/RemediationController.cs) - web API orchestration
+- [frontend/OSSSecurityAgentWeb/src/App.js](frontend/OSSSecurityAgentWeb/src/App.js) - frontend entry point
 
 ## Output locations
 

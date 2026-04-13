@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../OssSecurityAgent.csproj" />
+    <ProjectReference Include="../OssSecurityAgent/OssSecurityAgent.csproj" />
   </ItemGroup>
 
 </Project>
