@@ -35,7 +35,12 @@ public class ChatClientFactory
                 baseUrl = baseUrl.Substring(0, baseUrl.Length - "/chat/completions".Length);
             }
             
-            var client = new OpenAiCompatibleChatClient(baseUrl ?? "https://api.openai.com/v1", apiKey, modelName ?? "gpt-4");
+            var client = new OpenAiCompatibleChatClient(
+                baseUrl ?? "https://api.openai.com/v1", 
+                apiKey, 
+                modelName ?? "gpt-4",
+                Config.ModelTemperature,
+                Config.ModelMaxTokens);
             return client;
         }
         catch (Exception ex)
@@ -54,13 +59,17 @@ public class OpenAiCompatibleChatClient : IChatClient
     private readonly string _apiUrl;
     private readonly string _apiKey;
     private readonly string _modelName;
+    private readonly double _temperature;
+    private readonly int _maxTokens;
     private readonly HttpClient _httpClient;
 
-    public OpenAiCompatibleChatClient(string apiUrl, string apiKey, string modelName)
+    public OpenAiCompatibleChatClient(string apiUrl, string apiKey, string modelName, double temperature = 0.1, int maxTokens = 2000)
     {
         _apiUrl = apiUrl.TrimEnd('/');
         _apiKey = apiKey;
         _modelName = modelName;
+        _temperature = temperature;
+        _maxTokens = maxTokens;
         _httpClient = new HttpClient();
     }
 
@@ -77,8 +86,8 @@ public class OpenAiCompatibleChatClient : IChatClient
                     role = m.Role == ChatRole.User ? "user" : m.Role == ChatRole.System ? "system" : "assistant",
                     content = m.ToString() // ChatMessage toString gives the content
                 }),
-                temperature = 0.1,
-                max_tokens = 2000
+                temperature = _temperature,
+                max_tokens = _maxTokens
             };
 
             var requestJson = System.Text.Json.JsonSerializer.Serialize(request);
