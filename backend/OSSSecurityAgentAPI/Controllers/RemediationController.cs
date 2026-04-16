@@ -120,10 +120,17 @@ public class RemediationController : ControllerBase
             // Parse repository URL to get owner and repo
             var (owner, repoName) = ParseGitHubUrl(repo);
 
-            // Get GitHub token from environment
-            var githubToken = _config["GITHUB_TOKEN"] ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            // Get GitHub token from environment - check both sources
+            var githubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN") 
+                           ?? _config["GITHUB_TOKEN"];
+            
             if (string.IsNullOrEmpty(githubToken))
-                return BadRequest(new { message = "GitHub token not configured" });
+            {
+                _logger.LogError("GitHub token not configured in environment or appsettings");
+                return BadRequest(new { message = "GitHub token not configured. Please set GITHUB_TOKEN environment variable." });
+            }
+
+            _logger.LogInformation($"Using GitHub token (length: {githubToken.Length}) to fetch issues/PRs");
 
             var items = await FetchIssuesAndPRsFromGitHub(owner, repoName, githubToken);
 

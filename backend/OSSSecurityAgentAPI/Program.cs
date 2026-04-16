@@ -1,7 +1,10 @@
 var builder = WebApplication.CreateBuilder(args);
 
 // Load environment variables from .env file
-var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "OssSecurityAgent", ".env");
+// Current directory when running: backend/OSSSecurityAgentAPI/
+// .env file is at: (project root)/.env
+// So we need to go up 2 levels: ../../.env
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", ".env");
 if (File.Exists(envPath))
 {
     var envVars = File.ReadAllLines(envPath)
@@ -13,6 +16,13 @@ if (File.Exists(envPath))
     {
         Environment.SetEnvironmentVariable(key, value);
     }
+    Console.WriteLine($"Environment variables loaded from: {Path.GetFullPath(envPath)}");
+}
+else
+{
+    // Log warning if .env not found
+    Console.WriteLine($"Warning: .env file not found at {Path.GetFullPath(envPath)}");
+    Console.WriteLine($"Current directory: {Directory.GetCurrentDirectory()}");
 }
 
 // Add services to the container.
