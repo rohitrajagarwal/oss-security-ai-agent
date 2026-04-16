@@ -325,30 +325,6 @@ export default function App() {
           />
         </div>
 
-        <div className="analysis-mode-selector">
-          <label>Analysis Mode:</label>
-          <button
-            className={`mode-btn ${analysisMode === 'project' ? 'active' : ''}`}
-            onClick={() => {
-              setAnalysisMode('project');
-              setGlobalActionMessage(null);
-            }}
-            disabled={isLoading}
-          >
-            📦 Project-Level
-          </button>
-          <button
-            className={`mode-btn ${analysisMode === 'solution' ? 'active' : ''}`}
-            onClick={() => {
-              setAnalysisMode('solution');
-              setGlobalActionMessage(null);
-            }}
-            disabled={isLoading}
-          >
-            🏢 Solution-Level
-          </button>
-        </div>
-
         <div className="tabs">
           <button
             className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
@@ -373,32 +349,60 @@ export default function App() {
         )}
 
         <div className="tab-content">
-          {activeTab === 'analyze' && analysisMode === 'project' && (
-            <RepoAnalyzer
-              onAnalyze={handleAnalyze}
-              repoUrl={repoUrl}
-              vulnerabilities={vulnerabilities}
-              allDependencies={allDependencies}
-              onRemediatePackage={handleRemediatePackage}
-              isLoading={isLoading}
-            />
-          )}
+          {activeTab === 'analyze' && (
+            <>
+              <div className="analysis-mode-selector">
+                <label>Analysis Mode:</label>
+                <button
+                  className={`mode-btn ${analysisMode === 'project' ? 'active' : ''}`}
+                  onClick={() => {
+                    setAnalysisMode('project');
+                    setGlobalActionMessage(null);
+                  }}
+                  disabled={isLoading}
+                >
+                  📦 Project-Level
+                </button>
+                <button
+                  className={`mode-btn ${analysisMode === 'solution' ? 'active' : ''}`}
+                  onClick={() => {
+                    setAnalysisMode('solution');
+                    setGlobalActionMessage(null);
+                  }}
+                  disabled={isLoading}
+                >
+                  🏢 Solution-Level
+                </button>
+              </div>
 
-          {activeTab === 'analyze' && analysisMode === 'solution' && (
-            <div className="solution-mode-container">
-              <button 
-                className="analyze-btn-large" 
-                onClick={handleAnalyze}
-                disabled={isLoading || !repoUrl.trim()}
-              >
-                {isLoading ? '🔄 Analyzing...' : '🔍 Analyze Solution'}
-              </button>
-              <SolutionAnalyzer
-                analysisResult={solutionAnalysis}
-                onRemediatePackage={handleRemediatePackage}
-                isLoading={isLoading}
-              />
-            </div>
+              {analysisMode === 'project' && (
+                <RepoAnalyzer
+                  onAnalyze={handleAnalyze}
+                  repoUrl={repoUrl}
+                  vulnerabilities={vulnerabilities}
+                  allDependencies={allDependencies}
+                  onRemediatePackage={handleRemediatePackage}
+                  isLoading={isLoading}
+                />
+              )}
+
+              {analysisMode === 'solution' && (
+                <div className="solution-mode-container">
+                  <button 
+                    className="analyze-btn-large" 
+                    onClick={handleAnalyze}
+                    disabled={isLoading || !repoUrl.trim()}
+                  >
+                    {isLoading ? '🔄 Analyzing...' : '🔍 Analyze Solution'}
+                  </button>
+                  <SolutionAnalyzer
+                    analysisResult={solutionAnalysis}
+                    onRemediatePackage={handleRemediatePackage}
+                    isLoading={isLoading}
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {activeTab === 'issues' && (
