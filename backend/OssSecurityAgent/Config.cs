@@ -145,7 +145,7 @@ public static class Config
     }
 
     // Model Configuration Properties
-    public static string ModelName => Get("MODEL_NAME", "gpt-4.1-nano")!;
+    public static string ModelName => Get("MODEL_NAME", "gpt-4o")!;
     public static string ModelVersion => Get("MODEL_VERSION", "latest")!;
     public static double ModelTemperature => GetDouble("MODEL_TEMPERATURE", 0.1);
     
@@ -169,7 +169,7 @@ public static class Config
     public static int ModelMaxTokens => GetInt("MODEL_MAX_TOKENS", 300);
 
     // API Configuration Properties
-    public static string ApiUrl => Get("COPILOT_API_URL", "https://api.openai.com/v1/chat/completions")!;
+    public static string ApiUrl => Get("COPILOT_API_URL", "https://api.openai.com/v1")!;
     public static string? ApiKey => Get("COPILOT_API_KEY") ?? Get("OPENAI_API_KEY");
     public static int ApiTimeout => GetInt("API_TIMEOUT", 15);
     public static int PackageFetchTimeout => GetInt("PACKAGE_FETCH_TIMEOUT", 30);
@@ -195,6 +195,11 @@ public static class Config
 
     // AI Recommendation Labels
     public static string[] RecommendationLabels => GetArray("AI_RECOMMENDATION_LABELS", "Upgrade", "Consider", "Monitor", "No action");
+
+    // Solution-Level Scanning Configuration
+    public static int MaxParallelProjects => GetInt("MAX_PARALLEL_PROJECTS", 5);
+    public static string OutputFormat => Get("OUTPUT_FORMAT", "both")!; // json, console, or both
+    public static bool ScanSolutionOnly => GetBool("SCAN_SOLUTION_ONLY", false);
 
     /// <summary>
     /// Verify and log all loaded configuration parameters for debugging

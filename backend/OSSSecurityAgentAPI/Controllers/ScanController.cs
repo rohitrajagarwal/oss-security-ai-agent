@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Text.Json;
+using OssSecurityAgent;
+using OssSecurityAgent.Models;
+using OSSSecurityAgentAPI.Models;
+using OSSSecurityAgentAPI.Services;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -9,11 +13,13 @@ public class ScanController : ControllerBase
     private readonly ILogger<ScanController> _logger;
     private readonly string _agentPath;
     private readonly IConfiguration _config;
+    private readonly SolutionAnalysisService _solutionAnalysisService;
 
     public ScanController(ILogger<ScanController> logger, IConfiguration config)
     {
         _logger = logger;
         _config = config;
+        _solutionAnalysisService = new SolutionAnalysisService();
         // Find the OssSecurityAgent project directory relative to this API project
         var currentDir = Directory.GetCurrentDirectory();
         var agentDir = Path.Combine(currentDir, "..", "OssSecurityAgent");
@@ -89,6 +95,99 @@ public class ScanController : ControllerBase
             _logger.LogError(ex, "Error analyzing repository");
             return StatusCode(500, new { message = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Scans a solution (.sln) file for vulnerabilities at the solution level
+    /// Returns structured data about projects, packages, and vulnerabilities
+    /// </summary>
+    [HttpPost("scan-solution")]
+    public async Task<IActionResult> ScanSolution([FromBody] ScanSolutionRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request?.RepositoryPath))
+                return BadRequest(new { success = false, error = "RepositoryPath is required" });
+
+            _logger.LogInformation($"Scanning solution: {request.RepositoryPath}");
+
+            // Get or clone the repository
+            var localRepoPath = await GetOrCloneRepository(request.RepositoryPath);
+            if (string.IsNullOrEmpty(localRepoPath))
+                return BadRequest(new { success = false, error = "Failed to access repository" });
+
+            _logger.LogInformation($"Building solution to generate lock files...");
+            var buildSuccess = await BuildRepository(localRepoPath);
+            if (!buildSuccess)
+            {
+                _logger.LogWarning("Build failed or timed out, proceeding with solution scan anyway...");
+            }
+
+            // Find the solution file
+            var solutionFile = FindSolutionFile(localRepoPath);
+            SolutionModel solutionModel = null;
+
+            if (string.IsNullOrEmpty(solutionFile))
+            {
+                _logger.LogWarning("No .sln file found, falling back to project-level scanning");
+
+                // Fall back to scanning individual projects if no .sln found
+                var scanPath = FindProjectPath(localRepoPath);
+                var result = await RunAgentCommand($"--repo \"{scanPath}\" --scan --detect --analyze");
+
+                if (!result.Success)
+                {
+                    await DeleteClonedRepository(localRepoPath);
+                    return BadRequest(new { success = false, error = result.Error });
+                }
+
+                // Parse output and create a synthetic SolutionModel for compatibility
+                var vulnerabilities = ParseVulnerabilitiesFromOutput(result.Output);
+                solutionModel = CreateSolutionModelFromProjectScan(localRepoPath, scanPath, vulnerabilities);
+            }
+            else
+            {
+                _logger.LogInformation($"Found solution file: {solutionFile}");
+
+                // Create scanner with necessary dependencies
+                var packageCategorizer = new PackageCategorizer();
+                var scanner = new SolutionScanner(solutionFile, packageCategorizer);
+
+                // Parse the solution (this does the full analysis)
+                _logger.LogInformation($"Parsing solution structure...");
+                solutionModel = await scanner.ParseSolutionAsync();
+            }
+
+            if (solutionModel == null)
+            {
+                _logger.LogError("Failed to parse solution/project");
+                await DeleteClonedRepository(localRepoPath);
+                return StatusCode(500, new { success = false, error = "Failed to analyze repository" });
+            }
+
+            _logger.LogInformation($"Analysis complete. Found {solutionModel.Projects?.Count ?? 0} projects");
+
+            // Transform to API response format
+            var response = _solutionAnalysisService.TransformSolutionModel(solutionModel);
+            
+            // Clean up cloned repository
+            await DeleteClonedRepository(localRepoPath);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scanning solution");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Request model for solution scanning endpoint
+    /// </summary>
+    public class ScanSolutionRequest
+    {
+        public string? RepositoryPath { get; set; }
     }
 
     /// <summary>
@@ -216,6 +315,121 @@ public class ScanController : ControllerBase
         // No projects found, return root
         _logger.LogInformation("No .csproj files found, scanning root");
         return repoPath;
+    }
+
+    /// <summary>
+    /// Finds the solution (.sln) file in the repository. Searches top-level only by default.
+    /// </summary>
+    private string? FindSolutionFile(string repoPath)
+    {
+        _logger.LogInformation($"FindSolutionFile called with repoPath: {repoPath}");
+        
+        // Look for .sln files at the root level first
+        var rootSolutions = Directory.GetFiles(repoPath, "*.sln", SearchOption.TopDirectoryOnly);
+        
+        if (rootSolutions.Length > 0)
+        {
+            _logger.LogInformation($"Found {rootSolutions.Length} solution file(s) at root: {string.Join(", ", rootSolutions)}");
+            return rootSolutions[0]; // Return the first one
+        }
+
+        // If not found at root, search recursively (but this is less common)
+        var allSolutions = Directory.GetFiles(repoPath, "*.sln", SearchOption.AllDirectories);
+        
+        if (allSolutions.Length > 0)
+        {
+            _logger.LogInformation($"Found solution file in subdirectory: {allSolutions[0]}");
+            return allSolutions[0];
+        }
+
+        _logger.LogInformation("No .sln files found");
+        return null;
+    }
+
+    /// <summary>
+    /// Creates a SolutionModel from project-level scanning when no .sln file exists.
+    /// This ensures consistent response format regardless of .sln presence.
+    /// </summary>
+    private SolutionModel CreateSolutionModelFromProjectScan(string repoPath, string scanPath, Dictionary<string, dynamic> vulnerabilities)
+    {
+        var repoName = new DirectoryInfo(repoPath).Name;
+        var projectName = new DirectoryInfo(scanPath).Name;
+
+        var solution = new SolutionModel
+        {
+            Name = repoName,
+            Path = repoPath
+        };
+
+        // Create a single project entry representing the scanned directory
+        var project = new ProjectModel
+        {
+            Name = projectName,
+            Path = scanPath,
+            Guid = Guid.NewGuid().ToString()
+        };
+
+        // Process vulnerabilities and add packages to aggregated collection
+        if (vulnerabilities != null)
+        {
+            foreach (var vulnEntry in vulnerabilities)
+            {
+                var packageKey = vulnEntry.Key;
+                var vulnData = vulnEntry.Value;
+
+                // Extract package name and version
+                var packageName = vulnData.package ?? packageKey;
+                var version = vulnData.version ?? "unknown";
+
+                // Add to aggregated packages
+                var aggregatedPkg = new AggregatedPackageInfo
+                {
+                    Name = packageName,
+                    Version = version,
+                    Type = PackageType.NuGet, // Default to NuGet for scanned packages
+                    UsedByProjects = new List<string> { projectName }
+                };
+
+                // Add vulnerabilities if present
+                if (vulnData.vulnerabilities is System.Collections.IEnumerable vulns)
+                {
+                    foreach (var vuln in vulns)
+                    {
+                        if (vuln is System.Collections.Generic.Dictionary<string, object> vulnDict)
+                        {
+                            aggregatedPkg.Vulnerabilities.Add(new Vulnerability
+                            {
+                                Id = vulnDict.ContainsKey("id") ? vulnDict["id"]?.ToString() : "UNKNOWN",
+                                Severity = vulnDict.ContainsKey("severity") ? vulnDict["severity"]?.ToString() : "LOW",
+                                Summary = vulnDict.ContainsKey("summary") ? vulnDict["summary"]?.ToString() : "",
+                                Details = vulnDict.ContainsKey("details") ? vulnDict["details"]?.ToString() : ""
+                            });
+                        }
+                    }
+                }
+
+                solution.AggregatedPackages[$"{packageName}@{version}"] = aggregatedPkg;
+
+                // Also add to project packages
+                project.Packages[packageKey] = new PackageInfo
+                {
+                    Name = packageName,
+                    Version = version,
+                    Type = PackageType.NuGet,
+                    Vulnerabilities = aggregatedPkg.Vulnerabilities
+                };
+            }
+        }
+
+        solution.Projects.Add(project);
+        solution.Metadata = new AnalysisMetadata
+        {
+            ProjectsScanned = 1,
+            TotalPackages = solution.AggregatedPackages.Count,
+            AnalysisDate = DateTime.UtcNow
+        };
+
+        return solution;
     }
 
     private async Task<(bool Success, string Output, string? Error)> RunAgentCommand(string args)

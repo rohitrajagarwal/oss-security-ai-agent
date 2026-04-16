@@ -95,12 +95,12 @@ Recommended GitHub token permissions:
 Create or update [OssSecurityAgent/.env](OssSecurityAgent/.env) with your local values.
 
 ```env
-MODEL_NAME=gpt-4.1-nano
+MODEL_NAME=gpt-4o
 MODEL_VERSION=latest
 MODEL_TEMPERATURE=0.1
 MODEL_MAX_TOKENS=300
 
-COPILOT_API_URL=https://api.openai.com/v1/chat/completions
+COPILOT_API_URL=https://api.openai.com/v1
 COPILOT_API_KEY=your_openai_api_key_here
 
 GITHUB_TOKEN=your_github_pat_here

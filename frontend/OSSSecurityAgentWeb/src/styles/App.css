@@ -58,6 +58,110 @@
   border-color: #667eea;
 }
 
+/* Analysis Mode Selector */
+.analysis-mode-selector {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f7fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.analysis-mode-selector label {
+  display: block;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.mode-btn {
+  padding: 10px 20px;
+  margin-right: 10px;
+  border: 2px solid #cbd5e0;
+  background: white;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-block;
+}
+
+.mode-btn:hover:not(:disabled) {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: white;
+}
+
+/* Solution Mode Container */
+.solution-mode-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.analyze-btn-large {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.analyze-btn-large:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.analyze-btn-large:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Global Message */
+.global-message {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+}
+
+.global-message.success {
+  background: #c6f6d5;
+  color: #22543d;
+  border-left: 4px solid #48bb78;
+}
+
+.global-message.error {
+  background: #fed7d7;
+  color: #742a2a;
+  border-left: 4px solid #f56565;
+}
+
+.global-message.warning {
+  background: #feebc8;
+  color: #7c2d12;
+  border-left: 4px solid #ed8936;
+}
+
 .tabs {
   display: flex;
   gap: 10px;

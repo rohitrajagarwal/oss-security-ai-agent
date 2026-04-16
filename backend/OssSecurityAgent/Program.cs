@@ -18,6 +18,8 @@ using Microsoft.Extensions.AI; // Now comes safely from the Agent package
 using OssSecurityAgent.Models;
 using Octokit;
 
+namespace OssSecurityAgent;
+
 class Program
 {
     static async Task Main(string[] args)
@@ -82,6 +84,31 @@ class Program
             Console.WriteLine("Error: Please provide a repository path using the --repo flag.");
             return;
         }
+
+        // 2.2 SOLUTION-FIRST APPROACH: Check if input is a .sln file or if there's a .sln in the directory
+        string? slnPath = null;
+        if (repoPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) && File.Exists(repoPath))
+        {
+            slnPath = repoPath;
+        }
+        else if (Directory.Exists(repoPath))
+        {
+            // Try to find a .sln file in the directory
+            var slnFiles = Directory.GetFiles(repoPath, "*.sln", SearchOption.TopDirectoryOnly);
+            if (slnFiles.Length > 0)
+            {
+                slnPath = slnFiles[0]; // Use the first .sln found
+                Console.WriteLine($"[Program] Auto-detected solution: {slnPath}");
+            }
+            else if (slnFiles.Length > 1)
+            {
+                Console.WriteLine($"[Program] Warning: Found {slnFiles.Length} .sln files. Using the first one.");
+                slnPath = slnFiles[0];
+            }
+        }
+
+        // Flag to indicate whether we're using solution-level scanning
+        var useSolutionScanning = slnPath != null;
 
         // New flags: control whether to run scan / detect / analyze
         var flagScan = args.Any(a => string.Equals(a, "--scan", StringComparison.OrdinalIgnoreCase));
@@ -229,96 +256,140 @@ class Program
             {
                 Console.WriteLine($"\n--- Operating on Repository: {repoPath} ---");
 
-                // Always scan if any downstream step needs the deps
-                var dependencies = Enumerable.Empty<(string packageName, string version)>();
-                var depList = new List<(string packageName, string version)>();
-                if (performScan || performDetect || performAnalyze)
+                // SOLUTION-LEVEL SCANNING (if .sln file was found)
+                if (useSolutionScanning && slnPath != null)
                 {
-                    dependencies = SecurityAgentTools.GetProjectDependencies(repoPath) ?? Enumerable.Empty<(string packageName, string version)>();
-                    depList = dependencies.ToList();
-                }
-
-                if (flagScan && !flagDetect && !flagAnalyze)
-                {
-                    // --scan only: list all detected packages with versions
-                    Console.WriteLine("\n--- Scan Complete: packages found ---");
-                    Console.WriteLine($"Total: {depList.Count} dependencies");
-                    foreach (var (packageName, version) in depList)
-                    {
-                        Console.WriteLine($"- {packageName} {version}");
-                    }
-                }
-
-                if (performDetect)
-                {
-                    // run vulnerability detection (uses scanned packages)
-                    var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
-                    Console.WriteLine("\n--- Vulnerability Check Complete ---");
-
-                    // Print simple vulnerability count and full vulnerability output
-                    int vulnCount = 0;
+                    Console.WriteLine($"[Program] Using solution-level scanning: {slnPath}");
+                    
                     try
                     {
-                        using var doc = JsonDocument.Parse(finalResult);
-                        if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                        // Initialize the solution scanner and reporter
+                        var categorizer = new PackageCategorizer();
+                        var scanner = new SolutionScanner(slnPath, categorizer);
+                        
+                        var solution = await scanner.ParseSolutionAsync();
+                        
+                        // Generate reports (JSON and/or console based on config)
+                        var reportDir = Path.GetDirectoryName(slnPath) ?? ".";
+                        var reporter = new SolutionReporter(solution, reportDir);
+                        await reporter.GenerateReportsAsync();
+
+                        Console.WriteLine("\n[Program] Solution analysis complete!");
+                        
+                        // For compatibility with downstream logic, we could extract flattened dependencies
+                        // This allows the metadata to continue working if needed
+                        var dependencies = solution.AggregatedPackages
+                            .Select(kvp => (kvp.Value.Name, kvp.Value.Version))
+                            .ToList();
+
+                        // Continue with existing detect/analyze logic if needed
+                        if (performDetect || performAnalyze)
                         {
-                            foreach (var prop in doc.RootElement.EnumerateObject())
-                            {
-                                var val = prop.Value;
-                                if (val.ValueKind == JsonValueKind.Array)
-                                    vulnCount += val.GetArrayLength();
-                            }
+                            Console.WriteLine($"\nNote: Vulnerabilities already queried in solution scan. Skipping redundant OSV query.");
                         }
                     }
-                    catch { }
-
-                    Console.WriteLine($"Dependencies scanned: {depList.Count}");
-                    Console.WriteLine($"Vulnerabilities found: {vulnCount}");
-
-                    // Show full vulnerabilities JSON for --detect
-                    Console.WriteLine(finalResult);
-
-                    // If --analyze was also requested, fall through to analysis below
-                    if (!performAnalyze)
+                    catch (Exception sEx)
                     {
-                        // done when only detect requested
+                        Console.WriteLine($"Error during solution scanning: {sEx.Message}");
+                        throw;
                     }
                 }
-
-                if (performAnalyze)
+                else
                 {
-                    // Ensure vuln detection was run to pass results into AnalyzeCodeUsage
-                    var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
+                    // LEGACY: Project-level scanning (backward compatibility)
+                    Console.WriteLine($"[Program] Using project-level scanning (single project)");
 
-                    int vulnCount = 0;
-                    try
+                    // Always scan if any downstream step needs the deps
+                    var dependencies = Enumerable.Empty<(string packageName, string version)>();
+                    var depList = new List<(string packageName, string version)>();
+                    if (performScan || performDetect || performAnalyze)
                     {
-                        using var doc = JsonDocument.Parse(finalResult);
-                        if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                        dependencies = SecurityAgentTools.GetProjectDependencies(repoPath) ?? Enumerable.Empty<(string packageName, string version)>();
+                        depList = dependencies.ToList();
+                    }
+
+                    if (flagScan && !flagDetect && !flagAnalyze)
+                    {
+                        // --scan only: list all detected packages with versions
+                        Console.WriteLine("\n--- Scan Complete: packages found ---");
+                        Console.WriteLine($"Total: {depList.Count} dependencies");
+                        foreach (var (packageName, version) in depList)
                         {
-                            foreach (var prop in doc.RootElement.EnumerateObject())
-                            {
-                                var val = prop.Value;
-                                if (val.ValueKind == JsonValueKind.Array)
-                                    vulnCount += val.GetArrayLength();
-                            }
+                            Console.WriteLine($"- {packageName} {version}");
                         }
                     }
-                    catch { }
 
-                    Console.WriteLine($"\n--- Analysis Summary ---");
-                    Console.WriteLine($"Dependencies scanned: {depList.Count}");
-                    Console.WriteLine($"Vulnerabilities found: {vulnCount}");
-
-                    if (vulnCount > 0)
+                    if (performDetect)
                     {
-                        var analysisReport = await SecurityAgentTools.AnalyzeCodeUsage(finalResult, repoPath);
-                        Console.WriteLine("\n--- Code Usage Analysis Report ---");
-                        Console.WriteLine(analysisReport);
+                        // run vulnerability detection (uses scanned packages)
+                        var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
+                        Console.WriteLine("\n--- Vulnerability Check Complete ---");
+
+                        // Print simple vulnerability count and full vulnerability output
+                        int vulnCount = 0;
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(finalResult);
+                            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (var prop in doc.RootElement.EnumerateObject())
+                                {
+                                    var val = prop.Value;
+                                    if (val.ValueKind == JsonValueKind.Array)
+                                        vulnCount += val.GetArrayLength();
+                                }
+                            }
+                        }
+                        catch { }
+
+                        Console.WriteLine($"Dependencies scanned: {depList.Count}");
+                        Console.WriteLine($"Vulnerabilities found: {vulnCount}");
+
+                        // Show full vulnerabilities JSON for --detect
+                        Console.WriteLine(finalResult);
+
+                        // If --analyze was also requested, fall through to analysis below
+                        if (!performAnalyze)
+                        {
+                            // done when only detect requested
+                        }
                     }
-                    else
+
+                    if (performAnalyze)
                     {
-                        Console.WriteLine("There are no vulnerabilities therefore no risk summary/recommendation was generated.");
+                        // Ensure vuln detection was run to pass results into AnalyzeCodeUsage
+                        var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
+
+                        int vulnCount = 0;
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(finalResult);
+                            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (var prop in doc.RootElement.EnumerateObject())
+                                {
+                                    var val = prop.Value;
+                                    if (val.ValueKind == JsonValueKind.Array)
+                                        vulnCount += val.GetArrayLength();
+                                }
+                            }
+                        }
+                        catch { }
+
+                        Console.WriteLine($"\n--- Analysis Summary ---");
+                        Console.WriteLine($"Dependencies scanned: {depList.Count}");
+                        Console.WriteLine($"Vulnerabilities found: {vulnCount}");
+
+                        if (vulnCount > 0)
+                        {
+                            var analysisReport = await SecurityAgentTools.AnalyzeCodeUsage(finalResult, repoPath);
+                            Console.WriteLine("\n--- Code Usage Analysis Report ---");
+                            Console.WriteLine(analysisReport);
+                        }
+                        else
+                        {
+                            Console.WriteLine("There are no vulnerabilities therefore no risk summary/recommendation was generated.");
+                        }
                     }
                 }
             }

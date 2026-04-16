@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import './styles/App.css';
 import RepoAnalyzer from './components/RepoAnalyzer';
+import SolutionAnalyzer from './components/SolutionAnalyzer';
 import IssuesAndPRsTab from './components/IssuesAndPRsTab';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('analyze');
+  const [analysisMode, setAnalysisMode] = useState('project'); // 'project' or 'solution'
   const [repoUrl, setRepoUrl] = useState('');
   const [vulnerabilities, setVulnerabilities] = useState({});
   const [allDependencies, setAllDependencies] = useState({});
+  const [solutionAnalysis, setSolutionAnalysis] = useState(null);
   const [issues, setIssues] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [prActionMessages, setPrActionMessages] = useState({});
@@ -44,6 +47,11 @@ export default function App() {
       return;
     }
 
+    if (analysisMode === 'solution') {
+      await handleAnalyzeSolution();
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await fetch(`http://localhost:5001/api/scan/analyze?repo=${encodeURIComponent(repoUrl)}`);
@@ -62,6 +70,40 @@ export default function App() {
     } catch (error) {
       console.error('Error analyzing repository:', error);
       alert('Failed to analyze repository: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAnalyzeSolution = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/scan/scan-solution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repositoryPath: repoUrl
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to analyze solution');
+      }
+
+      setSolutionAnalysis(data);
+      setGlobalActionMessage({
+        type: 'success',
+        message: `Solution analysis complete: ${data.solution.projectsCount} projects, ${data.solution.totalPackages} packages`
+      });
+    } catch (error) {
+      console.error('Error analyzing solution:', error);
+      alert('Failed to analyze solution: ' + error.message);
+      setGlobalActionMessage({
+        type: 'error',
+        message: error.message
+      });
     } finally {
       setIsLoading(false);
     }
@@ -262,15 +304,33 @@ export default function App() {
 
       <main className="app-main">
         <div className="global-repo-input">
-          <label htmlFor="global-repo-url">GitHub Repository URL (.git)</label>
+          <label htmlFor="global-repo-url">GitHub Repository URL / Local Path (.git)</label>
           <input
             id="global-repo-url"
             type="text"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            placeholder="https://github.com/user/repo.git"
+            placeholder="https://github.com/user/repo.git or /path/to/local/repo"
             disabled={isLoading}
           />
+        </div>
+
+        <div className="analysis-mode-selector">
+          <label>Analysis Mode:</label>
+          <button
+            className={`mode-btn ${analysisMode === 'project' ? 'active' : ''}`}
+            onClick={() => setAnalysisMode('project')}
+            disabled={isLoading}
+          >
+            📦 Project-Level
+          </button>
+          <button
+            className={`mode-btn ${analysisMode === 'solution' ? 'active' : ''}`}
+            onClick={() => setAnalysisMode('solution')}
+            disabled={isLoading}
+          >
+            🏢 Solution-Level
+          </button>
         </div>
 
         <div className="tabs">
@@ -290,8 +350,14 @@ export default function App() {
           </button>
         </div>
 
+        {globalActionMessage && (
+          <div className={`global-message ${globalActionMessage.type}`}>
+            {globalActionMessage.message}
+          </div>
+        )}
+
         <div className="tab-content">
-          {activeTab === 'analyze' && (
+          {activeTab === 'analyze' && analysisMode === 'project' && (
             <RepoAnalyzer
               onAnalyze={handleAnalyze}
               repoUrl={repoUrl}
@@ -300,6 +366,23 @@ export default function App() {
               onRemediatePackage={handleRemediatePackage}
               isLoading={isLoading}
             />
+          )}
+
+          {activeTab === 'analyze' && analysisMode === 'solution' && (
+            <div className="solution-mode-container">
+              <button 
+                className="analyze-btn-large" 
+                onClick={handleAnalyze}
+                disabled={isLoading || !repoUrl.trim()}
+              >
+                {isLoading ? '🔄 Analyzing...' : '🔍 Analyze Solution'}
+              </button>
+              <SolutionAnalyzer
+                analysisResult={solutionAnalysis}
+                onRemediatePackage={handleRemediatePackage}
+                isLoading={isLoading}
+              />
+            </div>
           )}
 
           {activeTab === 'issues' && (
