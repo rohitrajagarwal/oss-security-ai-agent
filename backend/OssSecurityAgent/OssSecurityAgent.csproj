@@ -1,38 +1,29 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Remove="OSSSecurityAgentAPI/**/*.cs" />
     <None Remove="OSSSecurityAgentAPI/**/*.http" />
     <None Remove="OSSSecurityAgentAPI/appsettings*.json" />
   </ItemGroup>
-
   <ItemGroup>
-  
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260205.1" />
-  
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.2.0" />
-    
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.0" />
-
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.12.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.12.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.12.0" /> 
-
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.12.0" />
     <PackageReference Include="Microsoft.Build" Version="17.12.50" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Build.Framework" Version="17.12.50" ExcludeAssets="runtime" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="17.12.50" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="15.9.30" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Build.Utilities.Core" Version="17.12.50" ExcludeAssets="runtime" PrivateAssets="all" />
-    
     <PackageReference Include="Microsoft.NET.StringTools" Version="18.0.2" ExcludeAssets="runtime" PrivateAssets="all" />
-
     <PackageReference Include="NuGet.Frameworks" Version="6.12.1" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="NuGet.Versioning" Version="6.12.1" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="NuGet.Common" Version="6.12.1" ExcludeAssets="runtime" PrivateAssets="all" />
@@ -40,12 +31,9 @@
     <PackageReference Include="NuGet.ProjectModel" Version="6.12.1" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Build.Locator" Version="1.7.8" />
     <PackageReference Include="CvssSuite" Version="1.1.0" />
-    
     <!-- GitHub Integration -->
     <PackageReference Include="Octokit" Version="9.1.0" />
-    
     <!-- OpenAI Integration -->
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.0.1-preview.1.24570.5" />
   </ItemGroup>
-
 </Project>
