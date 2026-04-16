@@ -193,17 +193,34 @@ export default function App() {
           ...prev,
           [prNumber]: { type: 'success', message: `Mergeability refreshed for PR #${prNumber}.` }
         }));
+        
+        // Auto-dismiss the PR action message after 5 seconds
+        setTimeout(() => {
+          setPrActionMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[prNumber];
+            return updated;
+          });
+        }, 5000);
       } else {
         throw new Error('Unable to refresh mergeability right now.');
       }
     } catch (error) {
       console.error('Error checking mergeability:', error);
       const message = 'Failed to check mergeability: ' + error.message;
-      setGlobalActionMessage({ type: 'error', message });
       setPrActionMessages((prev) => ({
         ...prev,
         [prNumber]: { type: 'error', message }
       }));
+      
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        setPrActionMessages((prev) => {
+          const updated = { ...prev };
+          delete updated[prNumber];
+          return updated;
+        });
+      }, 5000);
     }
   };
 
@@ -231,28 +248,53 @@ export default function App() {
       const data = await response.json();
       if (response.ok) {
         const successMessage = data.message || `PR #${prNumber} approved successfully`;
-        setGlobalActionMessage({ type: 'success', message: successMessage });
         setPrActionMessages((prev) => ({
           ...prev,
           [prNumber]: { type: 'success', message: successMessage }
         }));
+        
+        // Auto-dismiss the PR action message after 5 seconds
+        setTimeout(() => {
+          setPrActionMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[prNumber];
+            return updated;
+          });
+        }, 5000);
+        
         await loadIssuesAndPRs();
       } else {
         const message = data.message || `Failed to approve PR #${prNumber}`;
-        setGlobalActionMessage({ type: 'error', message });
         setPrActionMessages((prev) => ({
           ...prev,
           [prNumber]: { type: 'error', message }
         }));
+        
+        // Auto-dismiss error after 5 seconds
+        setTimeout(() => {
+          setPrActionMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[prNumber];
+            return updated;
+          });
+        }, 5000);
       }
     } catch (error) {
       console.error('Error approving PR:', error);
       const message = 'Failed to approve PR: ' + error.message;
-      setGlobalActionMessage({ type: 'error', message });
       setPrActionMessages((prev) => ({
         ...prev,
         [prNumber]: { type: 'error', message }
       }));
+      
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        setPrActionMessages((prev) => {
+          const updated = { ...prev };
+          delete updated[prNumber];
+          return updated;
+        });
+      }, 5000);
     }
   };
 
@@ -280,28 +322,53 @@ export default function App() {
       const data = await response.json();
       if (response.ok) {
         const successMessage = data.message || `PR #${prNumber} merged successfully`;
-        setGlobalActionMessage({ type: 'success', message: successMessage });
         setPrActionMessages((prev) => ({
           ...prev,
           [prNumber]: { type: 'success', message: successMessage }
         }));
+        
+        // Auto-dismiss the PR action message after 5 seconds
+        setTimeout(() => {
+          setPrActionMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[prNumber];
+            return updated;
+          });
+        }, 5000);
+        
         await loadIssuesAndPRs();
       } else {
         const message = data.message || `Failed to merge PR #${prNumber}`;
-        setGlobalActionMessage({ type: 'error', message });
         setPrActionMessages((prev) => ({
           ...prev,
           [prNumber]: { type: 'error', message }
         }));
+        
+        // Auto-dismiss error after 5 seconds
+        setTimeout(() => {
+          setPrActionMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[prNumber];
+            return updated;
+          });
+        }, 5000);
       }
     } catch (error) {
       console.error('Error merging PR:', error);
       const message = 'Failed to merge PR: ' + error.message;
-      setGlobalActionMessage({ type: 'error', message });
       setPrActionMessages((prev) => ({
         ...prev,
         [prNumber]: { type: 'error', message }
       }));
+      
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        setPrActionMessages((prev) => {
+          const updated = { ...prev };
+          delete updated[prNumber];
+          return updated;
+        });
+      }, 5000);
     }
   };
 
