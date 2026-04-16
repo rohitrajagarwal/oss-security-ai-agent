@@ -335,6 +335,10 @@ class Program
                     {
                         // run vulnerability detection (uses scanned packages)
                         var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
+                        
+                        // Filter vulnerabilities by affected version (project mode)
+                        finalResult = SecurityAgentTools.FilterVulnerabilitiesByAffectedVersion(finalResult);
+                        
                         Console.WriteLine("\n--- Vulnerability Check Complete ---");
 
                         // Print simple vulnerability count and full vulnerability output
@@ -371,6 +375,9 @@ class Program
                     {
                         // Ensure vuln detection was run to pass results into AnalyzeCodeUsage
                         var finalResult = await SecurityAgentTools.CheckVulnerabilities(depList);
+                        
+                        // Filter vulnerabilities by affected version (project mode)
+                        finalResult = SecurityAgentTools.FilterVulnerabilitiesByAffectedVersion(finalResult);
 
                         int vulnCount = 0;
                         try

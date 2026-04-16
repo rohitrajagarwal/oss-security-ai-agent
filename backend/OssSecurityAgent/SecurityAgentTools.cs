@@ -1,5 +1,6 @@
 using Microsoft.Agents.AI;
 using NuGet.ProjectModel;
+using NuGet.Versioning;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Globalization;
@@ -481,6 +482,180 @@ public class SecurityAgentTools
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
         return JsonSerializer.Serialize(finalResult, options);
+    }
+
+    /// <summary>
+    /// Checks if a specific package version is affected by a vulnerability based on affected version ranges.
+    /// </summary>
+    /// <param name="currentVersion">The version of the package being checked</param>
+    /// <param name="affectedVersionsElement">The affected_versions element from OSV.dev</param>
+    /// <returns>True if the version is affected, false otherwise</returns>
+    public static bool IsVersionAffected(string currentVersion, JsonElement affectedVersionsElement)
+    {
+        try
+        {
+            if (!NuGetVersion.TryParse(currentVersion, out var version))
+            {
+                // If we can't parse the version, assume vulnerable for safety
+                return true;
+            }
+
+            // affectedVersionsElement should be an array
+            if (affectedVersionsElement.ValueKind != JsonValueKind.Array)
+            {
+                return true; // Assume vulnerable if we can't parse affected versions
+            }
+
+            foreach (var affectedVersion in affectedVersionsElement.EnumerateArray())
+            {
+                var introduced = affectedVersion.TryGetProperty("introduced", out var intProp) && intProp.ValueKind == JsonValueKind.String ? intProp.GetString() : null;
+                var fixed_in = affectedVersion.TryGetProperty("fixed", out var fixedProp) && fixedProp.ValueKind == JsonValueKind.String ? fixedProp.GetString() : null;
+
+                // Case 1: Direct version match (no introduced/fixed)
+                if (string.IsNullOrEmpty(introduced) && string.IsNullOrEmpty(fixed_in))
+                {
+                    // This might be a direct match - check if the affected version string matches
+                    if (affectedVersion.TryGetProperty("version", out var versionProp) && versionProp.ValueKind == JsonValueKind.String)
+                    {
+                        var affectedVersionStr = versionProp.GetString();
+                        if (!string.IsNullOrEmpty(affectedVersionStr) && NuGetVersion.TryParse(affectedVersionStr, out var affectedVer))
+                        {
+                            if (version.Equals(affectedVer))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(introduced) && string.IsNullOrEmpty(fixed_in))
+                {
+                    // Vulnerable from introduced version onwards (no upper bound)
+                    if (NuGetVersion.TryParse(introduced, out var introducedVer))
+                    {
+                        if (version >= introducedVer)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(introduced) && !string.IsNullOrEmpty(fixed_in))
+                {
+                    // Vulnerable in range [introduced, fixed)
+                    if (NuGetVersion.TryParse(introduced, out var introducedVer) &&
+                        NuGetVersion.TryParse(fixed_in, out var fixedVer))
+                    {
+                        if (version >= introducedVer && version < fixedVer)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else if (string.IsNullOrEmpty(introduced) && !string.IsNullOrEmpty(fixed_in))
+                {
+                    // Vulnerable up to fixed version (no lower bound, unlikely but handle it)
+                    if (NuGetVersion.TryParse(fixed_in, out var fixedVer))
+                    {
+                        if (version < fixedVer)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Version is not in any affected range
+            return false;
+        }
+        catch (Exception)
+        {
+            // If anything goes wrong, assume vulnerable for safety
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Filters vulnerability results to only include vulnerabilities where the queried version is actually affected.
+    /// </summary>
+    /// <param name="vulnerabilitiesJson">JSON output from CheckVulnerabilities</param>
+    /// <returns>Filtered JSON with only affected vulnerabilities</returns>
+    public static string FilterVulnerabilitiesByAffectedVersion(string vulnerabilitiesJson)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(vulnerabilitiesJson))
+                return vulnerabilitiesJson;
+
+            using var doc = JsonDocument.Parse(vulnerabilitiesJson);
+            var filteredResult = new Dictionary<string, object>();
+
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return vulnerabilitiesJson;
+
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var key = prop.Name; // e.g., "package@version"
+                var vulns = prop.Value;
+
+                if (vulns.ValueKind != JsonValueKind.Array)
+                {
+                    filteredResult[key] = JsonSerializer.SerializeToElement(vulns);
+                    continue;
+                }
+
+                var filteredVulns = new List<JsonElement>();
+
+                // Extract version from key (format: "package@version")
+                var parts = key.Split('@');
+                if (parts.Length != 2)
+                {
+                    // Malformed key, keep all vulnerabilities
+                    filteredResult[key] = JsonSerializer.SerializeToElement(vulns);
+                    continue;
+                }
+
+                var currentVersion = parts[1];
+
+                foreach (var vuln in vulns.EnumerateArray())
+                {
+                    // Get the affected_versions from this vulnerability
+                    if (vuln.TryGetProperty("affected_versions", out var affectedVersions))
+                    {
+                        if (IsVersionAffected(currentVersion, affectedVersions))
+                        {
+                            filteredVulns.Add(vuln);
+                        }
+                        else
+                        {
+                            // Log that this version is not affected
+                            if (vuln.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String)
+                            {
+                                Console.WriteLine($"[SecurityAgentTools] {key} is not affected by {idProp.GetString()}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No affected_versions info, keep the vulnerability
+                        filteredVulns.Add(vuln);
+                    }
+                }
+
+                filteredResult[key] = filteredVulns.Select(v => JsonSerializer.SerializeToElement(v)).ToList();
+            }
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            };
+            return JsonSerializer.Serialize(filteredResult, options);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error filtering vulnerabilities: {ex.Message}");
+            return vulnerabilitiesJson;
+        }
     }
 
     // --- TOOL C: SEMANTIC CODE USAGE ANALYSIS (Roslyn) ---
