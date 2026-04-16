@@ -39,9 +39,6 @@ namespace OSSSecurityAgentAPI.Models
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        [JsonPropertyName("path")]
-        public string Path { get; set; } = string.Empty;
-
         [JsonPropertyName("projectsCount")]
         public int ProjectsCount { get; set; }
 
@@ -57,9 +54,6 @@ namespace OSSSecurityAgentAPI.Models
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        [JsonPropertyName("path")]
-        public string Path { get; set; } = string.Empty;
-
         [JsonPropertyName("guid")]
         public string Guid { get; set; } = string.Empty;
 
@@ -71,6 +65,12 @@ namespace OSSSecurityAgentAPI.Models
 
         [JsonPropertyName("vulnerabilityCount")]
         public int VulnerabilityCount { get; set; }
+
+        [JsonPropertyName("packages")]
+        public List<PackageDetail> Packages { get; set; } = new();
+
+        [JsonPropertyName("vulnerabilities")]
+        public List<VulnerabilityDetail> Vulnerabilities { get; set; } = new();
     }
 
     public class PackagesSummary
@@ -107,6 +107,12 @@ namespace OSSSecurityAgentAPI.Models
 
         [JsonPropertyName("vulnerabilities")]
         public List<VulnerabilityDetail> Vulnerabilities { get; set; } = new();
+
+        [JsonPropertyName("aiRecommendation")]
+        public string AiRecommendation { get; set; } = string.Empty;
+
+        [JsonPropertyName("riskSummary")]
+        public string RiskSummary { get; set; } = string.Empty;
     }
 
     public class VulnerabilityDetail

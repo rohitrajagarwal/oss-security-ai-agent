@@ -4,7 +4,9 @@ import '../styles/SolutionAnalyzer.css';
 export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, isLoading }) {
   const [expandedProject, setExpandedProject] = useState(null);
   const [expandedPackage, setExpandedPackage] = useState(null);
+  const [expandedSummaries, setExpandedSummaries] = useState({});
   const [severityFilter, setSeverityFilter] = useState('ALL');
+  const [showAllDependencies, setShowAllDependencies] = useState(false);
 
   if (!analysisResult) {
     return (
@@ -26,12 +28,133 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
     return map[severity] || '#666';
   };
 
+  // Extract vulnerable packages from projects
+  const getVulnerablePackages = () => {
+    let vulnPackages = [];
+
+    // Try primary source: projects array
+    if (projects && projects.length > 0) {
+      const vulnerableMap = new Map();
+
+      projects.forEach((project) => {
+        if (project.packages && Array.isArray(project.packages)) {
+          project.packages.forEach((pkg) => {
+            if (pkg.vulnerabilities && pkg.vulnerabilities.length > 0) {
+              const key = `${pkg.name}@${pkg.version}`;
+              if (!vulnerableMap.has(key)) {
+                vulnerableMap.set(key, {
+                  name: pkg.name,
+                  version: pkg.version,
+                  key,
+                  count: pkg.vulnerabilities.length,
+                  vulnerabilities: pkg.vulnerabilities,
+                  aiRecommendation: pkg.aiRecommendation || '',
+                  riskSummary: pkg.riskSummary || '',
+                  severities: getSeverityCounts(pkg.vulnerabilities)
+                });
+              }
+            }
+          });
+        }
+      });
+
+      vulnPackages = Array.from(vulnerableMap.values());
+    } else if (packages && packages.detailed && Array.isArray(packages.detailed)) {
+      // Fallback: get from packages.detailed
+      vulnPackages = packages.detailed
+        .filter(pkg => pkg.vulnerabilityCount > 0)
+        .map(pkg => ({
+          name: pkg.name,
+          version: pkg.version,
+          key: `${pkg.name}@${pkg.version}`,
+          count: pkg.vulnerabilityCount,
+          vulnerabilities: pkg.vulnerabilities || [],
+          aiRecommendation: pkg.aiRecommendation || '',
+          riskSummary: pkg.riskSummary || '',
+          severities: pkg.vulnerabilities ? getSeverityCounts(pkg.vulnerabilities) : {}
+        }));
+    }
+
+    return vulnPackages;
+  };
+
+  const getSeverityCounts = (vulns) => {
+    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    if (!vulns) return counts;
+    vulns.forEach((v) => {
+      if (counts.hasOwnProperty(v.severity)) {
+        counts[v.severity]++;
+      }
+    });
+    return counts;
+  };
+
+  // Get all packages aggregated from all projects (for the dependencies table)
+  const getAllPackages = () => {
+    // Use the complete packages.detailed array from the API response
+    if (packages && packages.detailed && Array.isArray(packages.detailed)) {
+      return packages.detailed.map(pkg => ({
+        name: pkg.name,
+        version: pkg.version,
+        vulnCount: pkg.vulnerabilityCount || 0,
+        isVulnerable: (pkg.vulnerabilityCount || 0) > 0
+      })).sort((a, b) => {
+        // Sort vulnerable first, then by name
+        if (a.isVulnerable !== b.isVulnerable) {
+          return b.isVulnerable - a.isVulnerable;
+        }
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    // Fallback to aggregating from projects if packages.detailed unavailable
+    if (!projects) return [];
+    const packageMap = new Map();
+
+    projects.forEach((project) => {
+      if (project.packages && Array.isArray(project.packages)) {
+        project.packages.forEach((pkg) => {
+          const key = `${pkg.name}@${pkg.version}`;
+          if (!packageMap.has(key)) {
+            packageMap.set(key, {
+              name: pkg.name,
+              version: pkg.version,
+              vulnCount: (pkg.vulnerabilities && pkg.vulnerabilities.length) || 0,
+              isVulnerable: (pkg.vulnerabilities && pkg.vulnerabilities.length > 0) || false
+            });
+          }
+        });
+      }
+    });
+
+    return Array.from(packageMap.values()).sort((a, b) => {
+      // Sort vulnerable first, then by name
+      if (a.isVulnerable !== b.isVulnerable) {
+        return b.isVulnerable - a.isVulnerable;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   const toggleProject = (projectName) => {
     setExpandedProject(expandedProject === projectName ? null : projectName);
   };
 
   const togglePackage = (packageKey) => {
     setExpandedPackage(expandedPackage === packageKey ? null : packageKey);
+  };
+
+  const toggleSummary = (packageKey) => {
+    setExpandedSummaries((prev) => ({
+      ...prev,
+      [packageKey]: !prev[packageKey]
+    }));
+  };
+
+  const extractRecommendedVersion = (recommendationText) => {
+    if (!recommendationText) return '';
+    const match = recommendationText.match(/(\d+\.\d+\.\d+(?:\.\d+)*)/);
+    return match ? match[1] : '';
   };
 
   const filterVulnerabilities = (vulns) => {
@@ -50,6 +173,8 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
     }
     return null;
   };
+
+  const vulnerablePackagesList = getVulnerablePackages();
 
   return (
     <div className="solution-analyzer">
@@ -74,60 +199,7 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
         </div>
       </div>
 
-      {/* Recommendations */}
-      {recommendations && recommendations.length > 0 && (
-        <div className="recommendations-section">
-          <h3>Recommendations</h3>
-          <ul className="recommendations-list">
-            {recommendations.map((rec, idx) => (
-              <li key={idx} className="recommendation-item">{rec}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Vulnerability Summary */}
-      {vulnerabilities && (
-        <div className="vulnerability-summary-section">
-          <h3>Vulnerabilities by Severity</h3>
-          <div className="severity-filter">
-            {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(sev => (
-              <button
-                key={sev}
-                className={`filter-btn ${severityFilter === sev ? 'active' : ''}`}
-                onClick={() => setSeverityFilter(sev)}
-              >
-                {sev}
-                {sev !== 'ALL' && ` (${vulnerabilities.bySeverity[sev] || 0})`}
-              </button>
-            ))}
-          </div>
-
-          {/* Top Vulnerable Packages */}
-          {vulnerabilities.topVulnerablePackages && vulnerabilities.topVulnerablePackages.length > 0 && (
-            <div className="top-vulnerable-packages">
-              <h4>Top Vulnerable Packages</h4>
-              <div className="package-list">
-                {vulnerabilities.topVulnerablePackages.map((pkg, idx) => (
-                  <div key={idx} className="package-item">
-                    <div className="package-header">
-                      <span className="package-name">{pkg.packageName}@{pkg.version}</span>
-                      <span className="vuln-badge" style={{ backgroundColor: getSeverityColor(pkg.highestSeverity) }}>
-                        {pkg.vulnerabilityCount} vulns
-                      </span>
-                    </div>
-                    <div className="package-details">
-                      <small>Used by: {pkg.affectedProjects?.join(', ') || 'N/A'}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Affected Projects */}
+      {/* Projects with Vulnerabilities - MOVED TO TOP */}
       {vulnerabilities?.affectedProjects && Object.keys(vulnerabilities.affectedProjects).length > 0 && (
         <div className="affected-projects-section">
           <h3>Projects with Vulnerabilities</h3>
@@ -136,6 +208,54 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
               <div key={projName} className="project-vuln-item">
                 <span className="project-name">{projName}</span>
                 <span className="vuln-count">{vulnCount} vulnerable packages</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vulnerable Packages Cards Section - PROMINENT DISPLAY */}
+      {vulnerablePackagesList.length > 0 && (
+        <div className="vulnerabilities-section">
+          <h2>Vulnerable Packages ({vulnerablePackagesList.length})</h2>
+          <div className="packages-grid">
+            {vulnerablePackagesList.map((pkg) => (
+              <div key={pkg.key} className="package-card vulnerable-card">
+                <div className="package-header">
+                  <h3>{pkg.name}</h3>
+                  <span className="vuln-count">{pkg.count} vulnerabilities</span>
+                </div>
+
+                <button
+                  className="btn btn-remediate"
+                  onClick={() => onRemediatePackage(pkg.name, extractRecommendedVersion(pkg.aiRecommendation))}
+                  disabled={isLoading}
+                >
+                  Remediate
+                </button>
+
+                <button
+                  className="btn btn-ai-summary"
+                  onClick={() => toggleSummary(pkg.key)}
+                  disabled={isLoading}
+                >
+                  {expandedSummaries[pkg.key] ? 'Hide AI Summary' : 'Show AI Summary'}
+                </button>
+
+                {expandedSummaries[pkg.key] && (
+                  <div className="ai-summary-box">
+                    {pkg.aiRecommendation ? (
+                      <p><strong>Recommendation:</strong> {pkg.aiRecommendation}</p>
+                    ) : (
+                      <p><em>No recommendation available</em></p>
+                    )}
+                    {pkg.riskSummary ? (
+                      <p><strong>Summary:</strong> {pkg.riskSummary}</p>
+                    ) : (
+                      <p><em>No summary available</em></p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -162,14 +282,19 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
                 {expandedProject === project.name && (
                   <div className="project-details">
                     <p className="project-path">{project.path}</p>
-                    {project.dependencies && project.dependencies.length > 0 && (
+                    {project.packages && project.packages.length > 0 && (
                       <div className="dependencies">
-                        <h5>Project Dependencies:</h5>
-                        <ul>
-                          {project.dependencies.map((dep, idx) => (
-                            <li key={idx}>{dep}</li>
+                        <h5>Project Packages ({project.packages.length}):</h5>
+                        <div className="project-packages-list">
+                          {project.packages.map((pkg, idx) => (
+                            <div key={idx} className="project-package-item">
+                              <span className="pkg-name">{pkg.name}@{pkg.version}</span>
+                              {pkg.vulnerabilities && pkg.vulnerabilities.length > 0 && (
+                                <span className="pkg-vuln-count">{pkg.vulnerabilities.length} vulns</span>
+                              )}
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -180,93 +305,46 @@ export default function SolutionAnalyzer({ analysisResult, onRemediatePackage, i
         </div>
       )}
 
-      {/* All Packages */}
-      {packages && (
-        <div className="packages-section">
-          <h3>All Packages ({packages.total})</h3>
+      {/* All Dependencies Table */}
+      <div className="all-dependencies-section">
+        <button
+          className="btn btn-toggle"
+          onClick={() => setShowAllDependencies(!showAllDependencies)}
+        >
+          {showAllDependencies ? '▼' : '▶'} Show All Dependencies ({solution.totalPackages})
+        </button>
 
-          {/* Packages by Type */}
-          {packages.byType && Object.keys(packages.byType).length > 0 && (
-            <div className="packages-by-type">
-              <h4>By Type</h4>
-              <div className="type-badges">
-                {Object.entries(packages.byType).map(([type, count]) => (
-                  <div key={type} className="type-badge">
-                    <span className="type-name">{type}</span>
-                    <span className="type-count">{count}</span>
-                  </div>
+        {showAllDependencies && (
+          <div className="dependencies-table-wrapper">
+            <table className="dependencies-table">
+              <thead>
+                <tr>
+                  <th>Package Name</th>
+                  <th>Version</th>
+                  <th>Status</th>
+                  <th>Vulnerabilities</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getAllPackages().map((pkg) => (
+                  <tr key={`${pkg.name}@${pkg.version}`} className={pkg.isVulnerable ? 'vuln-row' : 'clean-row'}>
+                    <td className="pkg-name">{pkg.name}</td>
+                    <td className="pkg-version">{pkg.version}</td>
+                    <td className="pkg-status">
+                      <span className={`status-badge ${pkg.isVulnerable ? 'status-vulnerable' : 'status-clean'}`}>
+                        {pkg.isVulnerable ? '⚠️ Vulnerable' : '✅ Clean'}
+                      </span>
+                    </td>
+                    <td className="pkg-vulns">
+                      {pkg.vulnCount > 0 ? `${pkg.vulnCount} found` : 'None'}
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {/* Detailed Package List */}
-          {packages.detailed && packages.detailed.length > 0 && (
-            <div className="detailed-packages">
-              <h4>Detailed List</h4>
-              <div className="package-list">
-                {packages.detailed
-                  .filter(pkg => {
-                    if (severityFilter === 'ALL') return true;
-                    const highest = getHighestSeverity(pkg.vulnerabilities);
-                    return highest === severityFilter;
-                  })
-                  .map((pkg, idx) => (
-                    <div key={idx} className="package-item">
-                      <div className="package-header" onClick={() => togglePackage(`${pkg.name}@${pkg.version}`)}>
-                        <div className="package-info">
-                          <span className="package-name">{pkg.name}@{pkg.version}</span>
-                          <span className="package-type">{pkg.type}</span>
-                        </div>
-                        {pkg.vulnerabilityCount > 0 && (
-                          <span className="vuln-badge" style={{ backgroundColor: getSeverityColor(getHighestSeverity(pkg.vulnerabilities)) }}>
-                            {pkg.vulnerabilityCount}
-                          </span>
-                        )}
-                        <span className="toggle-icon">
-                          {expandedPackage === `${pkg.name}@${pkg.version}` ? '▼' : '▶'}
-                        </span>
-                      </div>
-                      {expandedPackage === `${pkg.name}@${pkg.version}` && (
-                        <div className="package-details">
-                          <p className="used-by">
-                            <strong>Used by:</strong> {pkg.usedByProjects?.join(', ') || 'N/A'}
-                          </p>
-                          {pkg.vulnerabilities && pkg.vulnerabilities.length > 0 && (
-                            <div className="vulnerabilities">
-                              <h5>Vulnerabilities:</h5>
-                              <div className="vuln-list">
-                                {filterVulnerabilities(pkg.vulnerabilities).map((vuln, vidx) => (
-                                  <div key={vidx} className="vuln-item">
-                                    <div className="vuln-header">
-                                      <span className="vuln-id" style={{ color: getSeverityColor(vuln.severity) }}>
-                                        {vuln.id}
-                                      </span>
-                                      <span className="vuln-severity" style={{ backgroundColor: getSeverityColor(vuln.severity) }}>
-                                        {vuln.severity}
-                                      </span>
-                                    </div>
-                                    <p className="vuln-summary">{vuln.summary}</p>
-                                    {vuln.details && (
-                                      <p className="vuln-details">{vuln.details}</p>
-                                    )}
-                                    <button className="remediate-btn" onClick={() => onRemediatePackage?.(pkg.name, pkg.version)}>
-                                      Get Remediation
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

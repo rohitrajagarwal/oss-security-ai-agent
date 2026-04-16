@@ -53,8 +53,7 @@ public class RemediationController : ControllerBase
             return Ok(new
             {
                 success = true,
-                vulnerabilitiesByPackage,
-                rawOutput = result.Output
+                vulnerabilitiesByPackage
             });
         }
         catch (Exception ex)

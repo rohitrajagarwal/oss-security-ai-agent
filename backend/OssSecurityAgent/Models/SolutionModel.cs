@@ -127,6 +127,12 @@ namespace OssSecurityAgent.Models
         [JsonPropertyName("vulnerabilities")]
         public List<Vulnerability> Vulnerabilities { get; set; } = new();
 
+        [JsonPropertyName("aiRecommendation")]
+        public string AiRecommendation { get; set; } = string.Empty;
+
+        [JsonPropertyName("riskSummary")]
+        public string RiskSummary { get; set; } = string.Empty;
+
         /// <summary>
         /// Get unique key for this package (Name@Version)
         /// </summary>

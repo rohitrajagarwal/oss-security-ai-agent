@@ -51,7 +51,6 @@ namespace OSSSecurityAgentAPI.Services
             return new SolutionSummary
             {
                 Name = solution.Name,
-                Path = solution.Path,
                 ProjectsCount = solution.Projects?.Count ?? 0,
                 TotalPackages = solution.AggregatedPackages?.Count ?? 0,
                 TotalVulnerabilities = criticalCount + highCount + mediumCount + lowCount
@@ -67,23 +66,170 @@ namespace OSSSecurityAgentAPI.Services
 
             foreach (var project in solution.Projects)
             {
-                var vulnCount = solution.AggregatedPackages
-                    .Where(pkg => pkg.Value.UsedByProjects?.Contains(project.Name) ?? false)
-                    .SelectMany(pkg => pkg.Value.Vulnerabilities)
-                    .Count();
+                // Get only vulnerable packages for this project
+                var vulnerablePackages = new List<PackageDetail>();
+                var projectVulnerabilities = new List<VulnerabilityDetail>();
 
-                projects.Add(new ProjectSummary
+                if (project.Packages != null)
                 {
-                    Name = project.Name,
-                    Path = project.Path,
-                    Guid = project.Guid,
-                    PackageCount = project.Packages?.Count ?? 0,
-                    Dependencies = project.ProjectReferences?.Select(pr => pr.ProjectName).ToList() ?? new List<string>(),
-                    VulnerabilityCount = vulnCount
-                });
+                    foreach (var (pkgKey, pkgInfo) in project.Packages)
+                    {
+                        // Only include packages with vulnerabilities
+                        if (pkgInfo.Vulnerabilities != null && pkgInfo.Vulnerabilities.Count > 0)
+                        {
+                            // Use AI summaries from agent's analyze output, or generate if not available
+                            var aiRecommendation = !string.IsNullOrEmpty(pkgInfo.AiRecommendation) 
+                                ? pkgInfo.AiRecommendation 
+                                : GenerateAiRecommendation(pkgInfo);
+                            
+                            var riskSummary = !string.IsNullOrEmpty(pkgInfo.RiskSummary) 
+                                ? pkgInfo.RiskSummary 
+                                : GenerateRiskSummary(pkgInfo);
+
+                            var packageDetail = new PackageDetail
+                            {
+                                Name = pkgInfo.Name,
+                                Version = pkgInfo.Version,
+                                Type = pkgInfo.Type.ToString(),
+                                UsedByProjects = new List<string> { project.Name },
+                                VulnerabilityCount = pkgInfo.Vulnerabilities.Count,
+                                Vulnerabilities = pkgInfo.Vulnerabilities.Select(v => new VulnerabilityDetail
+                                {
+                                    Id = v.Id,
+                                    Severity = v.Severity,
+                                    Summary = v.Summary,
+                                    Details = v.Details
+                                }).ToList(),
+                                AiRecommendation = aiRecommendation,
+                                RiskSummary = riskSummary
+                            };
+
+                            vulnerablePackages.Add(packageDetail);
+
+                            // Collect vulnerabilities
+                            foreach (var vuln in pkgInfo.Vulnerabilities)
+                            {
+                                projectVulnerabilities.Add(new VulnerabilityDetail
+                                {
+                                    Id = vuln.Id,
+                                    Severity = vuln.Severity,
+                                    Summary = vuln.Summary,
+                                    Details = vuln.Details
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Only add project if it has vulnerable packages
+                if (vulnerablePackages.Count > 0)
+                {
+                    projects.Add(new ProjectSummary
+                    {
+                        Name = project.Name,
+                        Guid = project.Guid,
+                        PackageCount = project.Packages?.Count ?? 0,
+                        Dependencies = project.ProjectReferences?.Select(pr => pr.ProjectName).ToList() ?? new List<string>(),
+                        VulnerabilityCount = projectVulnerabilities.Count,
+                        Packages = vulnerablePackages,
+                        Vulnerabilities = projectVulnerabilities
+                    });
+                }
             }
 
             return projects;
+        }
+
+        /// <summary>
+        /// Generate AI recommendation for a vulnerable package
+        /// Uses actual vulnerability details from analysis
+        /// </summary>
+        private string GenerateAiRecommendation(PackageInfo package)
+        {
+            if (package.Vulnerabilities == null || package.Vulnerabilities.Count == 0)
+                return "";
+
+            var criticalCount = package.Vulnerabilities.Count(v => v.Severity?.Equals("CRITICAL", StringComparison.OrdinalIgnoreCase) ?? false);
+            var highCount = package.Vulnerabilities.Count(v => v.Severity?.Equals("HIGH", StringComparison.OrdinalIgnoreCase) ?? false);
+
+            var severityLevel = "";
+            if (criticalCount > 0)
+                severityLevel = "CRITICAL";
+            else if (highCount > 0)
+                severityLevel = "HIGH";
+            else
+                severityLevel = "MEDIUM/LOW";
+
+            // Collect detailed vulnerability information
+            var detailedInfo = string.Join(" ", package.Vulnerabilities
+                .Where(v => !string.IsNullOrWhiteSpace(v.Details))
+                .Select(v => v.Details)
+                .Distinct()
+                .Take(2)); // Take first 2 detailed descriptions
+
+            if (!string.IsNullOrWhiteSpace(detailedInfo) && detailedInfo.Length > 50)
+            {
+                return $"{severityLevel} PRIORITY: {package.Name} ({package.Version}) has {package.Vulnerabilities.Count} vulnerability/ies. " +
+                    $"Details: {detailedInfo} " +
+                    $"Fixed versions available: {string.Join(", ", package.Vulnerabilities.Where(v => !string.IsNullOrWhiteSpace(v.FixedVersion)).Select(v => v.FixedVersion).Distinct())}";
+            }
+
+            if (criticalCount > 0)
+                return $"URGENT: {package.Name} ({package.Version}) has {criticalCount} CRITICAL vulnerability/ies. Update immediately to a patched version. " +
+                    $"Available fixes: {string.Join(", ", package.Vulnerabilities.Where(v => !string.IsNullOrWhiteSpace(v.FixedVersion)).Select(v => v.FixedVersion).Distinct())}";
+            else if (highCount > 0)
+                return $"HIGH PRIORITY: {package.Name} ({package.Version}) has {highCount} HIGH severity vulnerability/ies. Prioritize patching in next release cycle. " +
+                    $"Update to: {string.Join(", ", package.Vulnerabilities.Where(v => !string.IsNullOrWhiteSpace(v.FixedVersion)).Select(v => v.FixedVersion).Distinct())}";
+            else
+                return $"Review {package.Name} ({package.Version}) for available security updates and plan patching. " +
+                    $"Recommended versions: {string.Join(", ", package.Vulnerabilities.Where(v => !string.IsNullOrWhiteSpace(v.FixedVersion)).Select(v => v.FixedVersion).Distinct())}";
+        }
+
+        /// <summary>
+        /// Generate risk summary for a vulnerable package
+        /// Uses actual vulnerability details from analysis
+        /// </summary>
+        private string GenerateRiskSummary(PackageInfo package)
+        {
+            if (package.Vulnerabilities == null || package.Vulnerabilities.Count == 0)
+                return "No known vulnerabilities";
+
+            var severityCounts = new Dictionary<string, int>();
+            foreach (var vuln in package.Vulnerabilities)
+            {
+                var severity = vuln.Severity?.ToUpper() ?? "UNKNOWN";
+                if (!severityCounts.ContainsKey(severity))
+                    severityCounts[severity] = 0;
+                severityCounts[severity]++;
+            }
+
+            // Collect CVE information
+            var cveInfo = string.Join(", ", package.Vulnerabilities
+                .Where(v => !string.IsNullOrWhiteSpace(v.CVE))
+                .Select(v => v.CVE)
+                .Distinct()
+                .Take(3));
+
+            // Get summary from vulnerabilities
+            var vulnSummaries = string.Join(" ", package.Vulnerabilities
+                .Where(v => !string.IsNullOrWhiteSpace(v.Summary))
+                .Select(v => v.Summary)
+                .Distinct()
+                .Take(2));
+
+            var summaryParts = severityCounts.OrderByDescending(kvp => kvp.Key)
+                .Select(kvp => $"{kvp.Value} {kvp.Key}")
+                .ToList();
+
+            var result = $"Found {package.Vulnerabilities.Count} vulnerabilities ({string.Join(", ", summaryParts)}). ";
+            
+            if (!string.IsNullOrWhiteSpace(cveInfo))
+                result += $"CVEs: {cveInfo}. ";
+            
+            if (!string.IsNullOrWhiteSpace(vulnSummaries) && vulnSummaries.Length > 30)
+                result += $"Summary: {vulnSummaries}";
+            
+            return result;
         }
 
         private PackagesSummary BuildPackagesSummary(SolutionModel solution)
@@ -109,6 +255,15 @@ namespace OSSSecurityAgentAPI.Services
                     packagesSummary.UniqueVulnerable++;
                 }
 
+                // Use AI summaries from agent's analyze output, or generate if not available
+                var aiRecommendation = !string.IsNullOrEmpty(package.AiRecommendation)
+                    ? package.AiRecommendation
+                    : (vulnCount > 0 ? GenerateAiRecommendation(package) : string.Empty);
+                
+                var riskSummary = !string.IsNullOrEmpty(package.RiskSummary)
+                    ? package.RiskSummary
+                    : (vulnCount > 0 ? GenerateRiskSummary(package) : string.Empty);
+
                 packagesSummary.Detailed.Add(new PackageDetail
                 {
                     Name = package.Name,
@@ -124,7 +279,9 @@ namespace OSSSecurityAgentAPI.Services
                             Summary = v.Summary,
                             Details = v.Details
                         })
-                        .ToList()
+                        .ToList(),
+                    AiRecommendation = aiRecommendation,
+                    RiskSummary = riskSummary
                 });
             }
 

@@ -97,6 +97,11 @@ export default function App() {
         type: 'success',
         message: `Solution analysis complete: ${data.solution.projectsCount} projects, ${data.solution.totalPackages} packages`
       });
+      
+      // Auto-clear the message after 5 seconds
+      setTimeout(() => {
+        setGlobalActionMessage(null);
+      }, 5000);
     } catch (error) {
       console.error('Error analyzing solution:', error);
       alert('Failed to analyze solution: ' + error.message);
@@ -104,6 +109,11 @@ export default function App() {
         type: 'error',
         message: error.message
       });
+      
+      // Auto-clear error message after 5 seconds
+      setTimeout(() => {
+        setGlobalActionMessage(null);
+      }, 5000);
     } finally {
       setIsLoading(false);
     }
@@ -319,14 +329,20 @@ export default function App() {
           <label>Analysis Mode:</label>
           <button
             className={`mode-btn ${analysisMode === 'project' ? 'active' : ''}`}
-            onClick={() => setAnalysisMode('project')}
+            onClick={() => {
+              setAnalysisMode('project');
+              setGlobalActionMessage(null);
+            }}
             disabled={isLoading}
           >
             📦 Project-Level
           </button>
           <button
             className={`mode-btn ${analysisMode === 'solution' ? 'active' : ''}`}
-            onClick={() => setAnalysisMode('solution')}
+            onClick={() => {
+              setAnalysisMode('solution');
+              setGlobalActionMessage(null);
+            }}
             disabled={isLoading}
           >
             🏢 Solution-Level

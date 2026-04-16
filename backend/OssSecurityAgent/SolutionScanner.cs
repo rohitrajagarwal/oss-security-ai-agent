@@ -310,6 +310,12 @@ namespace OssSecurityAgent
             {
                 try
                 {
+                    if (string.IsNullOrEmpty(osvJson))
+                    {
+                        Console.WriteLine("[SolutionScanner] Empty OSV response");
+                        return;
+                    }
+
                     using var doc = JsonDocument.Parse(osvJson);
                     var root = doc.RootElement;
 
@@ -318,67 +324,83 @@ namespace OssSecurityAgent
                     var highCount = 0;
                     var mediumCount = 0;
                     var lowCount = 0;
+                    var totalVulnsFound = 0;
 
-                    // Parse results array
-                    if (root.TryGetProperty("results", out var resultsArray))
+                    // The response is a dictionary: { "packageName@version": [...vulnerabilities...], ... }
+                    foreach (var packageEntry in root.EnumerateObject())
                     {
-                        foreach (var result in resultsArray.EnumerateArray())
+                        var packageKey = packageEntry.Name;
+                        
+                        if (!_solution.AggregatedPackages.TryGetValue(packageKey, out var aggPackage))
                         {
-                            if (!result.TryGetProperty("query", out var queryElem)) continue;
+                            Console.WriteLine($"[SolutionScanner] Package not found in aggregated packages: {packageKey}");
+                            continue;
+                        }
 
-                            var packageName = GetJsonString(queryElem, "name");
-                            var packageVersion = GetJsonString(result, "version");
+                        // Check for error response (object with error property)
+                        if (packageEntry.Value.ValueKind == JsonValueKind.Object && packageEntry.Value.TryGetProperty("error", out var errorProp))
+                        {
+                            Console.WriteLine($"[SolutionScanner] OSV error for {packageKey}: {GetJsonString(errorProp, "error")}");
+                            continue;
+                        }
 
-                            if (string.IsNullOrEmpty(packageName)) continue;
-
-                            var packageKey = $"{packageName}@{packageVersion}";
-
-                            if (!_solution.AggregatedPackages.TryGetValue(packageKey, out var aggPackage))
+                        // The value is an array of vulnerabilities (from CheckVulnerabilities format)
+                        if (packageEntry.Value.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var vulnElem in packageEntry.Value.EnumerateArray())
                             {
-                                // Try without version
-                                var noVersionKey = _solution.AggregatedPackages.Keys
-                                    .FirstOrDefault(k => k.StartsWith(packageName + "@", StringComparison.OrdinalIgnoreCase));
-                                
-                                if (noVersionKey != null)
-                                {
-                                    aggPackage = _solution.AggregatedPackages[noVersionKey];
-                                }
-                                else
-                                {
-                                    continue;
-                                }
-                            }
+                                var vulnId = GetJsonString(vulnElem, "id");
+                                var vulnScore = GetJsonDouble(vulnElem, "score");
+                                var severity = CalculateSeverity(vulnScore);
+                                var summary = GetJsonString(vulnElem, "summary");
+                                var details = GetJsonString(vulnElem, "details");
+                                var description = GetJsonString(vulnElem, "description");
+                                var publishedDate = GetJsonString(vulnElem, "published_date");
 
-                            // Parse vulnerabilities
-                            if (result.TryGetProperty("vulnerabilities", out var vulnsArray))
-                            {
-                                foreach (var vulnElem in vulnsArray.EnumerateArray())
+                                // Extract fixed_in versions
+                                var fixedVersion = "";
+                                if (vulnElem.TryGetProperty("fixed_in", out var fixedInProp) && fixedInProp.ValueKind == JsonValueKind.Array)
                                 {
-                                    var vulnId = GetJsonString(vulnElem, "id");
-                                    var severity = GetJsonString(vulnElem, "severity");
-                                    var summary = GetJsonString(vulnElem, "summary");
-                                    var details = GetJsonString(vulnElem, "details");
-
-                                    if (!string.IsNullOrEmpty(vulnId))
+                                    var fixedVersions = new List<string>();
+                                    foreach (var fv in fixedInProp.EnumerateArray())
                                     {
-                                        var vuln = new Vulnerability
+                                        if (fv.ValueKind == JsonValueKind.String)
                                         {
-                                            Id = vulnId,
-                                            Severity = severity,
-                                            Summary = summary,
-                                            Details = details
-                                        };
-
-                                        aggPackage.Vulnerabilities.Add(vuln);
-
-                                        // Update counts
-                                        switch (severity?.ToUpper())
-                                        {
-                                            case "CRITICAL": criticalCount++; break;
-                                            case "HIGH": highCount++; break;
-                                            case "MEDIUM": mediumCount++; break;
-                                            case "LOW": lowCount++; break;
+                                            var versionStr = fv.GetString();
+                                            if (!string.IsNullOrEmpty(versionStr))
+                                                fixedVersions.Add(versionStr);
                                         }
+                                    }
+                                    if (fixedVersions.Count > 0)
+                                        fixedVersion = fixedVersions[0]; // Use first fixed version
+                                }
+
+                                if (!string.IsNullOrEmpty(vulnId))
+                                {
+                                    var vuln = new Vulnerability
+                                    {
+                                        Id = vulnId,
+                                        PackageName = aggPackage.Name,
+                                        CurrentVersion = aggPackage.Version,
+                                        FixedVersion = string.IsNullOrEmpty(fixedVersion) ? null : fixedVersion,
+                                        Severity = severity,
+                                        CvssScore = vulnScore,
+                                        Summary = summary,
+                                        Details = details,
+                                        Description = description ?? summary,
+                                        Published = TryParseDate(publishedDate)
+                                    };
+
+                                    aggPackage.Vulnerabilities.Add(vuln);
+                                    totalVulnsFound++;
+
+                                    // Update counts
+                                    switch (severity?.ToUpper())
+                                    {
+                                        case "CRITICAL": criticalCount++; break;
+                                        case "HIGH": highCount++; break;
+                                        case "MEDIUM": mediumCount++; break;
+                                        case "LOW": lowCount++; break;
                                     }
                                 }
                             }
@@ -391,13 +413,30 @@ namespace OssSecurityAgent
                     _solution.Metadata.Vulnerabilities.Medium = mediumCount;
                     _solution.Metadata.Vulnerabilities.Low = lowCount;
 
-                    Console.WriteLine($"[SolutionScanner] Found vulnerabilities: {criticalCount} Critical, {highCount} High, {mediumCount} Medium, {lowCount} Low");
+                    Console.WriteLine($"[SolutionScanner] Found {totalVulnsFound} total vulnerabilities: {criticalCount} Critical, {highCount} High, {mediumCount} Medium, {lowCount} Low");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SolutionScanner] Error parsing vulnerability data: {ex.Message}");
+                    Console.WriteLine($"[SolutionScanner] Error parsing vulnerability data: {ex.Message}\n{ex.StackTrace}");
                 }
             });
+        }
+
+        /// <summary>
+        /// Calculate severity level from CVSS score
+        /// </summary>
+        private string CalculateSeverity(double? score)
+        {
+            if (score.HasValue)
+            {
+                if (score.Value >= 9.0) return "CRITICAL";
+                if (score.Value >= 7.0) return "HIGH";
+                if (score.Value >= 4.0) return "MEDIUM";
+                return "LOW";
+            }
+
+            // Fallback: return LOW for unscored vulnerabilities
+            return "LOW";
         }
 
         /// <summary>
@@ -410,6 +449,33 @@ namespace OssSecurityAgent
                 return prop.GetString() ?? string.Empty;
             }
             return string.Empty;
+        }
+
+        /// <summary>
+        /// Helper to safely extract JSON double property
+        /// </summary>
+        private static double? GetJsonDouble(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Number)
+            {
+                if (prop.TryGetDouble(out var value))
+                    return value;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Helper to safely parse ISO 8601 date string
+        /// </summary>
+        private static DateTime? TryParseDate(string dateStr)
+        {
+            if (string.IsNullOrEmpty(dateStr))
+                return null;
+            
+            if (DateTime.TryParse(dateStr, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var date))
+                return date;
+            
+            return null;
         }
 
         /// <summary>

@@ -86,8 +86,7 @@ public class ScanController : ControllerBase
             return Ok(new
             {
                 success = true,
-                vulnerabilitiesByPackage,
-                rawOutput = result.Output
+                vulnerabilitiesByPackage
             });
         }
         catch (Exception ex)
@@ -149,13 +148,33 @@ public class ScanController : ControllerBase
             {
                 _logger.LogInformation($"Found solution file: {solutionFile}");
 
+                // Run the full analysis cycle (scan -> detect -> analyze) to generate AI recommendations
+                var solutionDir = Path.GetDirectoryName(solutionFile);
+                var scanResult = await RunAgentCommand($"--repo \"{solutionDir}\" --scan --detect --analyze");
+
+                if (!scanResult.Success)
+                {
+                    _logger.LogWarning($"Agent analysis had issues: {scanResult.Error}");
+                    // Continue anyway to at least get the solution structure
+                }
+
+                // Parse AI summaries from the agent's analyze output
+                var parsedVulnerabilities = ParseVulnerabilitiesFromOutput(scanResult.Output);
+                _logger.LogInformation($"Parsed {parsedVulnerabilities.Count} packages with AI summaries from agent output");
+
                 // Create scanner with necessary dependencies
                 var packageCategorizer = new PackageCategorizer();
                 var scanner = new SolutionScanner(solutionFile, packageCategorizer);
 
-                // Parse the solution (this does the full analysis)
+                // Parse the solution structure
                 _logger.LogInformation($"Parsing solution structure...");
                 solutionModel = await scanner.ParseSolutionAsync();
+
+                // Merge the AI-analyzed recommendation data into the solution model's packages
+                if (solutionModel != null && parsedVulnerabilities.Count > 0)
+                {
+                    MergeParsedVulnerabilitiesIntoSolutionModel(solutionModel, parsedVulnerabilities);
+                }
             }
 
             if (solutionModel == null)
@@ -271,8 +290,7 @@ public class ScanController : ControllerBase
             return Ok(new
             {
                 success = true,
-                vulnerabilities,
-                rawOutput = result.Output
+                vulnerabilities
             });
         }
         catch (Exception ex)
@@ -862,4 +880,106 @@ public class ScanController : ControllerBase
 
         return null;
     }
+
+    /// <summary>
+    /// Merge parsed vulnerabilities (with AI summaries from agent) into the solution model's packages
+    /// </summary>
+    private void MergeParsedVulnerabilitiesIntoSolutionModel(
+        SolutionModel solutionModel,
+        Dictionary<string, dynamic> parsedVulnerabilities)
+    {
+        if (solutionModel?.Projects == null)
+            return;
+
+        // Iterate through all projects and their packages
+        foreach (var project in solutionModel.Projects)
+        {
+            if (project.Packages == null)
+                continue;
+
+            foreach (var packageEntry in project.Packages)
+            {
+                var packageInfo = packageEntry.Value;
+                if (packageInfo == null)
+                    continue;
+
+                // Look for matching entry in parsed vulnerabilities
+                var packageKey = $"{packageInfo.Name}@{packageInfo.Version}";
+                
+                if (parsedVulnerabilities.TryGetValue(packageKey, out var parsedPackage))
+                {
+                    try
+                    {
+                        // Extract AI recommendation and risk summary from parsed data
+                        // The parsedPackage is a dynamic object, use JsonElement approach
+                        if (parsedPackage is JsonElement jsonElement)
+                        {
+                            if (jsonElement.TryGetProperty("aiRecommendation", out var aiRecElem))
+                            {
+                                var aiRec = aiRecElem.GetString();
+                                if (!string.IsNullOrEmpty(aiRec))
+                                {
+                                    packageInfo.AiRecommendation = aiRec;
+                                    _logger.LogInformation($"Set aiRecommendation for {packageKey}: {aiRec}");
+                                }
+                            }
+
+                            if (jsonElement.TryGetProperty("riskSummary", out var riskSumElem))
+                            {
+                                var riskSum = riskSumElem.GetString();
+                                if (!string.IsNullOrEmpty(riskSum))
+                                {
+                                    packageInfo.RiskSummary = riskSum;
+                                    _logger.LogInformation($"Set riskSummary for {packageKey}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: try reflection on dynamic object
+                            var packageObj = (object)parsedPackage;
+                            
+                            var aiRecProp = packageObj.GetType().GetProperty("aiRecommendation");
+                            if (aiRecProp != null)
+                            {
+                                var aiRec = aiRecProp.GetValue(packageObj)?.ToString() ?? "";
+                                if (!string.IsNullOrEmpty(aiRec))
+                                {
+                                    packageInfo.AiRecommendation = aiRec;
+                                    _logger.LogInformation($"Set aiRecommendation for {packageKey}: {aiRec}");
+                                }
+                            }
+
+                            var riskSumProp = packageObj.GetType().GetProperty("riskSummary");
+                            if (riskSumProp != null)
+                            {
+                                var riskSum = riskSumProp.GetValue(packageObj)?.ToString() ?? "";
+                                if (!string.IsNullOrEmpty(riskSum))
+                                {
+                                    packageInfo.RiskSummary = riskSum;
+                                    _logger.LogInformation($"Set riskSummary for {packageKey}");
+                                }
+                            }
+                        }
+
+                        _logger.LogInformation($"Merged AI summaries for {packageKey}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"Failed to merge parsed data for {packageKey}: {ex.Message}");
+                    }
+                }
+
+                // Also update aggregated packages if present
+                if (solutionModel.AggregatedPackages.TryGetValue(packageKey, out var aggPackage))
+                {
+                    if (!string.IsNullOrEmpty(packageInfo.AiRecommendation))
+                        aggPackage.AiRecommendation = packageInfo.AiRecommendation;
+                    if (!string.IsNullOrEmpty(packageInfo.RiskSummary))
+                        aggPackage.RiskSummary = packageInfo.RiskSummary;
+                }
+            }
+        }
+    }
 }
+

@@ -40,17 +40,64 @@ public class SecurityAgentTools
         // If the caller provided a directory, use it; otherwise treat the input as a project file path
         var dir = Directory.Exists(safePath) ? safePath : Path.GetDirectoryName(safePath) ?? string.Empty;
         var assetsPath = Path.Combine(dir, "obj", "project.assets.json");
-        var lockFile = LockFileUtilities.GetLockFile(assetsPath, null);
-        if (lockFile == null) return Enumerable.Empty<(string packageName, string version)>();
+        
+        if (!File.Exists(assetsPath))
+        {
+            Console.WriteLine($"[SecurityAgentTools] Lock file not found at: {assetsPath}");
+            return Enumerable.Empty<(string packageName, string version)>();
+        }
 
-        var packages = lockFile.Targets
-            .SelectMany(t => t.Libraries)
-            .Select(l => (packageName: l.Name ?? string.Empty, version: l.Version?.ToNormalizedString() ?? string.Empty))
-            .Where(p => !string.IsNullOrEmpty(p.packageName) && !string.IsNullOrEmpty(p.version))
-            .Distinct()
-            .ToList();
+        try
+        {
+            var packages = ParseProjectAssetsJson(assetsPath);
+            return packages;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SecurityAgentTools] Error parsing lock file: {ex.Message}");
+            return Enumerable.Empty<(string packageName, string version)>();
+        }
+    }
 
-        return packages;
+    /// <summary>
+    /// Parse project.assets.json directly without using NuGet.ProjectModel
+    /// </summary>
+    private static IEnumerable<(string packageName, string version)> ParseProjectAssetsJson(string assetsPath)
+    {
+        var packages = new List<(string packageName, string version)>();
+
+        try
+        {
+            var jsonContent = File.ReadAllText(assetsPath);
+            using var doc = JsonDocument.Parse(jsonContent);
+            var root = doc.RootElement;
+
+            // Look for the "targets" object which contains all resolved dependencies
+            if (root.TryGetProperty("targets", out var targets))
+            {
+                // targets has structure: { "<framework>": { "<package name>/<version>": {...} } }
+                foreach (var framework in targets.EnumerateObject())
+                {
+                    foreach (var item in framework.Value.EnumerateObject())
+                    {
+                        // item.Name is in format "PackageName/Version"
+                        var parts = item.Name.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2)
+                        {
+                            var packageName = parts[0];
+                            var version = string.Join("/", parts.Skip(1)); // In case version contains'/'
+                            packages.Add((packageName, version));
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SecurityAgentTools] Error parsing project.assets.json: {ex.Message}");
+        }
+
+        return packages.Distinct().ToList();
     }
 
     /// <summary>
@@ -67,18 +114,15 @@ public class SecurityAgentTools
             var safePath = projectFilePath ?? string.Empty;
             var dir = Directory.Exists(safePath) ? safePath : Path.GetDirectoryName(safePath) ?? string.Empty;
             var assetsPath = Path.Combine(dir, "obj", "project.assets.json");
-            var lockFile = LockFileUtilities.GetLockFile(assetsPath, null);
             
-            if (lockFile == null)
+            if (!File.Exists(assetsPath))
+            {
+                Console.WriteLine($"[SecurityAgentTools] Lock file not found at: {assetsPath}");
                 return graph;
+            }
 
-            var packages = lockFile.Targets
-                .SelectMany(t => t.Libraries)
-                .Select(l => (packageName: l.Name ?? string.Empty, version: l.Version?.ToNormalizedString() ?? string.Empty))
-                .Where(p => !string.IsNullOrEmpty(p.packageName) && !string.IsNullOrEmpty(p.version))
-                .Distinct()
-                .ToList();
-
+            var packages = ParseProjectAssetsJson(assetsPath).ToList();
+            
             // Add all packages as nodes with metadata
             foreach (var (name, version) in packages)
             {
@@ -96,51 +140,10 @@ public class SecurityAgentTools
                     };
                 }
             }
-
-            // Build dependency relationships from lockFile
-            // Create a lookup map for resolved versions from the lock file
-            var resolvedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var target in lockFile.Targets)
-            {
-                foreach (var lib in target.Libraries)
-                {
-                    if (!string.IsNullOrEmpty(lib.Name))
-                    {
-                        var normalizedVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
-                        resolvedVersions[lib.Name] = normalizedVersion;
-                    }
-                }
-            }
-
-            // Now build dependency relationships using resolved versions
-            foreach (var target in lockFile.Targets)
-            {
-                foreach (var lib in target.Libraries)
-                {
-                    if (!string.IsNullOrEmpty(lib.Name))
-                    {
-                        var libVersion = lib.Version?.ToNormalizedString() ?? "0.0.0";
-                        if (lib.Dependencies != null)
-                        {
-                            foreach (var dep in lib.Dependencies)
-                            {
-                                if (!string.IsNullOrEmpty(dep.Id))
-                                {
-                                    // Resolve the dependency to its exact version from the lock file
-                                    var depVersion = resolvedVersions.TryGetValue(dep.Id, out var resolved) 
-                                        ? resolved 
-                                        : "0.0.0";
-                                    graph.AddDependency(lib.Name, libVersion, dep.Id, depVersion);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Could not build dependency graph: {ex.Message}");
+            Console.WriteLine($"[SecurityAgentTools] Warning: Could not build dependency graph: {ex.Message}");
         }
         
         return graph;

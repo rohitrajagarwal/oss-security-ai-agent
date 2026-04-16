@@ -282,10 +282,22 @@ class Program
                             .Select(kvp => (kvp.Value.Name, kvp.Value.Version))
                             .ToList();
 
-                        // Continue with existing detect/analyze logic if needed
-                        if (performDetect || performAnalyze)
+                        // Handle analyze step if requested
+                        if (performAnalyze)
                         {
-                            Console.WriteLine($"\nNote: Vulnerabilities already queried in solution scan. Skipping redundant OSV query.");
+                            Console.WriteLine($"\nPerforming AI-based code usage analysis for solution...");
+                            
+                            // Convert solution model vulnerabilities to CheckVulnerabilities JSON format
+                            var vulnerabilitiesJson = ConvertSolutionVulnerabilitiesToJson(solution);
+                            
+                            // Call AnalyzeCodeUsage with the vulnerabilities
+                            var analysisReport = await SecurityAgentTools.AnalyzeCodeUsage(vulnerabilitiesJson, repoPath);
+                            Console.WriteLine("\n--- Code Usage Analysis Report ---");
+                            Console.WriteLine(analysisReport);
+                        }
+                        else if (performDetect)
+                        {
+                            Console.WriteLine($"\nNote: Vulnerabilities already queried in solution scan. Analyze step not requested.");
                         }
                     }
                     catch (Exception sEx)
@@ -616,5 +628,63 @@ class Program
         {
             Console.WriteLine($"\n[FATAL ERROR]: {ex}");
         }
+    }
+
+    /// <summary>
+    /// Convert solution model vulnerabilities into the JSON format expected by AnalyzeCodeUsage
+    /// </summary>
+    static string ConvertSolutionVulnerabilitiesToJson(SolutionModel solution)
+    {
+        var vulnerabilitiesDict = new Dictionary<string, object>();
+
+        // Process each package in the solution
+        foreach (var kvp in solution.AggregatedPackages)
+        {
+            var packageKey = kvp.Key;  // e.g., "PackageName@Version"
+            var packageInfo = kvp.Value;
+
+            if (packageInfo.Vulnerabilities != null && packageInfo.Vulnerabilities.Count > 0)
+            {
+                Console.WriteLine($"[ConvertVulnerabilities] Processing {packageKey} with {packageInfo.Vulnerabilities.Count} vulnerabilities");
+
+                // Convert Vulnerability objects to the format expected by AnalyzeCodeUsage
+                var vulnsList = new List<Dictionary<string, object?>>();
+
+                foreach (var vuln in packageInfo.Vulnerabilities)
+                {
+                    var vulnObj = new Dictionary<string, object?>
+                    {
+                        ["id"] = vuln.Id ?? "",
+                        ["summary"] = vuln.Summary ?? "",
+                        ["details"] = vuln.Details ?? "",
+                        ["score"] = vuln.CvssScore,
+                        ["description"] = vuln.Details ?? vuln.Summary ?? "",
+                        ["fixed_in"] = new List<string> { vuln.FixedVersion ?? "" }.Where(s => !string.IsNullOrEmpty(s)).ToList(),
+                        ["affected_versions"] = new List<string> { packageInfo.Version },
+                        ["published_date"] = vuln.Published?.ToString("o") ?? "",
+                        ["references"] = new List<string>()
+                    };
+
+                    vulnsList.Add(vulnObj);
+                }
+
+                if (vulnsList.Count > 0)
+                {
+                    vulnerabilitiesDict[packageKey] = vulnsList;
+                }
+            }
+        }
+
+        // Serialize to JSON with proper formatting
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
+
+        var resultJson = JsonSerializer.Serialize(vulnerabilitiesDict, options);
+        Console.WriteLine($"[ConvertVulnerabilities] Total packages with vulnerabilities: {vulnerabilitiesDict.Count}");
+        return resultJson;
     }
 }
