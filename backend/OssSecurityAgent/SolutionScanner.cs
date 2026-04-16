@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using NuGet.Versioning;
 using OssSecurityAgent.Models;
 
 namespace OssSecurityAgent
@@ -375,7 +376,25 @@ namespace OssSecurityAgent
                                         fixedVersion = fixedVersions[0]; // Use first fixed version
                                 }
 
-                                if (!string.IsNullOrEmpty(vulnId))
+                                // Extract affected versions to check if current version is actually vulnerable
+                                var affectedVersionsList = new List<string>();
+                                if (vulnElem.TryGetProperty("affected_versions", out var affectedVersionsProp) && affectedVersionsProp.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var av in affectedVersionsProp.EnumerateArray())
+                                    {
+                                        if (av.ValueKind == JsonValueKind.String)
+                                        {
+                                            var versionStr = av.GetString();
+                                            if (!string.IsNullOrEmpty(versionStr))
+                                                affectedVersionsList.Add(versionStr);
+                                        }
+                                    }
+                                }
+
+                                // Check if current version is actually vulnerable
+                                bool isActuallyVulnerable = IsVersionAffected(aggPackage.Version, affectedVersionsList);
+
+                                if (!string.IsNullOrEmpty(vulnId) && isActuallyVulnerable)
                                 {
                                     var vuln = new Vulnerability
                                     {
@@ -402,6 +421,10 @@ namespace OssSecurityAgent
                                         case "MEDIUM": mediumCount++; break;
                                         case "LOW": lowCount++; break;
                                     }
+                                }
+                                else if (!string.IsNullOrEmpty(vulnId) && !isActuallyVulnerable)
+                                {
+                                    Console.WriteLine($"[SolutionScanner] {aggPackage.Name}@{aggPackage.Version} is not affected by {vulnId} (affected versions: {string.Join(", ", affectedVersionsList)})");
                                 }
                             }
                         }
@@ -476,6 +499,110 @@ namespace OssSecurityAgent
                 return date;
             
             return null;
+        }
+
+        /// <summary>
+        /// Checks if a given version is affected by a vulnerability based on affected version list.
+        /// Handles:
+        /// - Direct version matches: "17.12.6"
+        /// - Version ranges: "introduced:17.0.0", "fixed:17.8.3"
+        /// </summary>
+        private static bool IsVersionAffected(string currentVersion, List<string> affectedVersions)
+        {
+            if (affectedVersions == null || affectedVersions.Count == 0)
+            {
+                // If no affected versions specified, assume it could be vulnerable
+                return true;
+            }
+
+            try
+            {
+                if (!NuGet.Versioning.NuGetVersion.TryParse(currentVersion, out var currentVer))
+                {
+                    // Can't parse current version, assume vulnerable to be safe
+                    return true;
+                }
+
+                // Group affected versions into ranges
+                var introducedVersions = new List<NuGet.Versioning.NuGetVersion>();
+                var fixedVersions = new List<NuGet.Versioning.NuGetVersion>();
+                var directVersions = new List<NuGet.Versioning.NuGetVersion>();
+
+                foreach (var affectedStr in affectedVersions)
+                {
+                    if (string.IsNullOrWhiteSpace(affectedStr))
+                        continue;
+
+                    // Check for "introduced:X.Y.Z" or "fixed:X.Y.Z" format
+                    if (affectedStr.StartsWith("introduced:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var versionStr = affectedStr.Substring("introduced:".Length);
+                        if (NuGet.Versioning.NuGetVersion.TryParse(versionStr, out var ver))
+                            introducedVersions.Add(ver);
+                    }
+                    else if (affectedStr.StartsWith("fixed:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var versionStr = affectedStr.Substring("fixed:".Length);
+                        if (NuGet.Versioning.NuGetVersion.TryParse(versionStr, out var ver))
+                            fixedVersions.Add(ver);
+                    }
+                    else
+                    {
+                        // Direct version
+                        if (NuGet.Versioning.NuGetVersion.TryParse(affectedStr, out var ver))
+                            directVersions.Add(ver);
+                    }
+                }
+
+                // Check direct version matches
+                if (directVersions.Count > 0)
+                {
+                    foreach (var directVer in directVersions)
+                    {
+                        if (currentVer.Equals(directVer))
+                        {
+                            return true; // Exact version match
+                        }
+                    }
+                }
+
+                // Check version ranges: if we have introduced but no fixed, or introduced < current < fixed
+                if (introducedVersions.Count > 0)
+                {
+                    var minIntroduced = introducedVersions.Min();
+                    var maxFixed = fixedVersions.Count > 0 ? fixedVersions.Min() : null;
+
+                    // If current >= introduced
+                    if (currentVer >= minIntroduced)
+                    {
+                        // If there's a fixed version and current >= fixed, then it's patched
+                        if (maxFixed != null && currentVer >= maxFixed)
+                        {
+                            return false; // Already patched
+                        }
+                        // If no fixed version or current < fixed, then it's vulnerable
+                        return true;
+                    }
+                }
+
+                // If we only have fixed versions (no introduced), current < fixed means it's affected
+                if (fixedVersions.Count > 0 && introducedVersions.Count == 0)
+                {
+                    var minFixed = fixedVersions.Min();
+                    if (minFixed != null && currentVer < minFixed)
+                    {
+                        return true; // Current version is older than the fixed version
+                    }
+                }
+
+                // No matching affected criteria found
+                return false;
+            }
+            catch
+            {
+                // If version comparison fails, assume vulnerable to be safe
+                return true;
+            }
         }
 
         /// <summary>
