@@ -139,15 +139,24 @@ export default function App() {
       });
       const data = await response.json();
       if (response.ok) {
-        alert(`Remediation started for ${packageName}`);
+        setGlobalActionMessage({ 
+          type: 'success', 
+          message: `Remediation started for ${packageName}` 
+        });
         setActiveTab('issues');
         await loadIssuesAndPRs();
       } else {
-        alert(`Failed to remediate: ${data.message}`);
+        setGlobalActionMessage({ 
+          type: 'error', 
+          message: `Failed to remediate: ${data.message}` 
+        });
       }
     } catch (error) {
       console.error('Error remediating package:', error);
-      alert('Failed to remediate: ' + error.message);
+      setGlobalActionMessage({ 
+        type: 'error', 
+        message: `Failed to remediate: ${error.message}` 
+      });
     } finally {
       setIsLoading(false);
     }
