@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using NuGet.Versioning;
 using OssSecurityAgent.Models;
 
 namespace OssSecurityAgent
@@ -358,10 +359,9 @@ namespace OssSecurityAgent
                                 var publishedDate = GetJsonString(vulnElem, "published_date");
 
                                 // Extract fixed_in versions
-                                var fixedVersion = "";
+                                var fixedVersions = new List<string>();
                                 if (vulnElem.TryGetProperty("fixed_in", out var fixedInProp) && fixedInProp.ValueKind == JsonValueKind.Array)
                                 {
-                                    var fixedVersions = new List<string>();
                                     foreach (var fv in fixedInProp.EnumerateArray())
                                     {
                                         if (fv.ValueKind == JsonValueKind.String)
@@ -371,12 +371,29 @@ namespace OssSecurityAgent
                                                 fixedVersions.Add(versionStr);
                                         }
                                     }
-                                    if (fixedVersions.Count > 0)
-                                        fixedVersion = fixedVersions[0]; // Use first fixed version
                                 }
 
-                                if (!string.IsNullOrEmpty(vulnId))
+                                // CHECK: Is the current version vulnerable to this vulnerability?
+                                // If the package version is >= any of the fixed versions, it's already patched
+                                bool isVulnerable = true;
+                                if (fixedVersions.Count > 0)
                                 {
+                                    // Check if current version >= any fixed version (meaning it's already patched)
+                                    foreach (var fixedVer in fixedVersions)
+                                    {
+                                        if (CompareVersions(aggPackage.Version, fixedVer) >= 0)
+                                        {
+                                            // Current version is >= fixed version, so it's already patched
+                                            isVulnerable = false;
+                                            Console.WriteLine($"[SolutionScanner] {aggPackage.Name}@{aggPackage.Version} >= {fixedVer} (fixed in {vulnId}), marking as not vulnerable");
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (!string.IsNullOrEmpty(vulnId) && isVulnerable)
+                                {
+                                    var fixedVersion = fixedVersions.Count > 0 ? fixedVersions[0] : "";
                                     var vuln = new Vulnerability
                                     {
                                         Id = vulnId,
@@ -476,6 +493,27 @@ namespace OssSecurityAgent
                 return date;
             
             return null;
+        }
+
+        /// <summary>
+        /// Compares two semantic versions (NuGet-style).
+        /// Returns: negative if v1 < v2, 0 if v1 == v2, positive if v1 > v2
+        /// </summary>
+        private static int CompareVersions(string version1, string version2)
+        {
+            try
+            {
+                // Use NuGet's version parser for accurate semantic versioning
+                if (NuGet.Versioning.NuGetVersion.TryParse(version1, out var v1) &&
+                    NuGet.Versioning.NuGetVersion.TryParse(version2, out var v2))
+                {
+                    return v1.CompareTo(v2);
+                }
+            }
+            catch { }
+
+            // Fallback: simple string comparison (not ideal but better than nothing)
+            return string.Compare(version1, version2, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
