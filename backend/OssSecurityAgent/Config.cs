@@ -148,6 +148,24 @@ public static class Config
     public static string ModelName => Get("MODEL_NAME", "gpt-4.1-nano")!;
     public static string ModelVersion => Get("MODEL_VERSION", "latest")!;
     public static double ModelTemperature => GetDouble("MODEL_TEMPERATURE", 0.1);
+    
+    /// <summary>
+    /// Get the appropriate max tokens parameter and its value.
+    /// Returns tuple of (parameterName, value).
+    /// Prefers MAX_COMPLETION_TOKENS if present, otherwise uses MODEL_MAX_TOKENS.
+    /// </summary>
+    public static (string parameterName, int value) GetMaxTokensParameter()
+    {
+        var maxCompletionTokens = GetInt("MAX_COMPLETION_TOKENS", 0);
+        if (maxCompletionTokens > 0)
+        {
+            return ("max_completion_tokens", maxCompletionTokens);
+        }
+        
+        var modelMaxTokens = GetInt("MODEL_MAX_TOKENS", 300);
+        return ("max_tokens", modelMaxTokens);
+    }
+    
     public static int ModelMaxTokens => GetInt("MODEL_MAX_TOKENS", 300);
 
     // API Configuration Properties
@@ -177,4 +195,47 @@ public static class Config
 
     // AI Recommendation Labels
     public static string[] RecommendationLabels => GetArray("AI_RECOMMENDATION_LABELS", "Upgrade", "Consider", "Monitor", "No action");
+
+    /// <summary>
+    /// Verify and log all loaded configuration parameters for debugging
+    /// </summary>
+    public static void VerifyConfiguration()
+    {
+        Load();
+        
+        Console.WriteLine("\n=== Configuration Verification ===\n");
+        
+        // Model Configuration
+        Console.WriteLine("Model Configuration:");
+        Console.WriteLine($"  MODEL_NAME: {ModelName}");
+        Console.WriteLine($"  MODEL_VERSION: {ModelVersion}");
+        Console.WriteLine($"  MODEL_TEMPERATURE: {ModelTemperature}");
+        
+        var (maxTokensParamName, maxTokensValue) = GetMaxTokensParameter();
+        Console.WriteLine($"  MAX_TOKENS_PARAMETER: {maxTokensParamName}");
+        Console.WriteLine($"  MAX_TOKENS_VALUE: {maxTokensValue}");
+        
+        // Check which parameter is present in env
+        var maxCompletionTokensEnv = Get("MAX_COMPLETION_TOKENS");
+        var modelMaxTokensEnv = Get("MODEL_MAX_TOKENS");
+        Console.WriteLine($"  MAX_COMPLETION_TOKENS (in .env): {(string.IsNullOrWhiteSpace(maxCompletionTokensEnv) ? "NOT SET" : maxCompletionTokensEnv)}");
+        Console.WriteLine($"  MODEL_MAX_TOKENS (in .env): {(string.IsNullOrWhiteSpace(modelMaxTokensEnv) ? "NOT SET" : modelMaxTokensEnv)}");
+        
+        // API Configuration
+        Console.WriteLine("\nAPI Configuration:");
+        Console.WriteLine($"  COPILOT_API_URL: {ApiUrl}");
+        Console.WriteLine($"  COPILOT_API_KEY: {(string.IsNullOrWhiteSpace(ApiKey) ? "NOT SET" : "***SET***")}");
+        Console.WriteLine($"  API_TIMEOUT: {ApiTimeout}s");
+        
+        // GitHub Configuration
+        Console.WriteLine("\nGitHub Configuration:");
+        Console.WriteLine($"  GITHUB_TOKEN: {(string.IsNullOrWhiteSpace(GitHubToken) ? "NOT SET" : "***SET***")}");
+        Console.WriteLine($"  GITHUB_REVIEWERS: {(GitHubReviewers.Count > 0 ? string.Join(", ", GitHubReviewers) : "NOT SET")}");
+        
+        // Summary
+        Console.WriteLine("\n=== Verification Summary ===");
+        bool isValid = !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ModelName);
+        Console.WriteLine($"Configuration Status: {(isValid ? "✓ VALID" : "✗ INVALID")}");
+        Console.WriteLine();
+    }
 }

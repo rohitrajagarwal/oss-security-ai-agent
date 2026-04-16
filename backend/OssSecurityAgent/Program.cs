@@ -27,6 +27,13 @@ class Program
         var executingDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? Directory.GetCurrentDirectory();
         Config.Load(executingDir);
 
+        // Check if user wants to verify configuration
+        if (args.Any(a => string.Equals(a, "--verify-config", StringComparison.OrdinalIgnoreCase)))
+        {
+            Config.VerifyConfiguration();
+            return;
+        }
+
         // 1. PRE-HOST: Register MSBuild
         if (!MSBuildLocator.IsRegistered)
         {

@@ -18,10 +18,21 @@ public class ChatClientFactory
         var apiKey = Config.ApiKey;
         var apiUrl = Config.ApiUrl;
         var modelName = Config.ModelName;
+        var temperature = Config.ModelTemperature;
+        var (maxTokensParamName, maxTokensValue) = Config.GetMaxTokensParameter();
+
+        // Log loaded parameters for verification
+        Console.WriteLine("[ChatClientFactory] Loaded Configuration:");
+        Console.WriteLine($"  Model Name: {modelName}");
+        Console.WriteLine($"  API URL: {apiUrl}");
+        Console.WriteLine($"  Temperature: {temperature}");
+        Console.WriteLine($"  Max Tokens Parameter: {maxTokensParamName} = {maxTokensValue}");
+        Console.WriteLine($"  API Key Present: {(!string.IsNullOrWhiteSpace(apiKey) ? "Yes" : "No")}");
 
         // If no API key is available, return null (chat client is optional)
         if (string.IsNullOrWhiteSpace(apiKey))
         {
+            Console.WriteLine("[ChatClientFactory] ERROR: No API key found. Chat client will not be created.");
             return null;
         }
 
@@ -39,8 +50,10 @@ public class ChatClientFactory
                 baseUrl ?? "https://api.openai.com/v1", 
                 apiKey, 
                 modelName ?? "gpt-4",
-                Config.ModelTemperature,
-                Config.ModelMaxTokens);
+                temperature,
+                maxTokensValue,
+                maxTokensParamName);
+            Console.WriteLine("[ChatClientFactory] Chat client created successfully.");
             return client;
         }
         catch (Exception ex)
@@ -61,15 +74,17 @@ public class OpenAiCompatibleChatClient : IChatClient
     private readonly string _modelName;
     private readonly double _temperature;
     private readonly int _maxTokens;
+    private readonly string _maxTokensParameterName;
     private readonly HttpClient _httpClient;
 
-    public OpenAiCompatibleChatClient(string apiUrl, string apiKey, string modelName, double temperature = 0.1, int maxTokens = 2000)
+    public OpenAiCompatibleChatClient(string apiUrl, string apiKey, string modelName, double temperature = 0.1, int maxTokens = 2000, string maxTokensParameterName = "max_tokens")
     {
         _apiUrl = apiUrl.TrimEnd('/');
         _apiKey = apiKey;
         _modelName = modelName;
         _temperature = temperature;
         _maxTokens = maxTokens;
+        _maxTokensParameterName = maxTokensParameterName;
         _httpClient = new HttpClient();
     }
 
@@ -78,7 +93,9 @@ public class OpenAiCompatibleChatClient : IChatClient
         try
         {
             var messageList = messages.ToList();
-            var request = new
+            
+            // Build request dynamically based on the max tokens parameter name
+            var baseRequest = new
             {
                 model = _modelName,
                 messages = messageList.Select(m => new
@@ -86,16 +103,36 @@ public class OpenAiCompatibleChatClient : IChatClient
                     role = m.Role == ChatRole.User ? "user" : m.Role == ChatRole.System ? "system" : "assistant",
                     content = m.ToString() // ChatMessage toString gives the content
                 }),
-                temperature = _temperature,
-                max_tokens = _maxTokens
+                temperature = _temperature
             };
+            
+            // Create request object with the appropriate max tokens parameter name
+            var requestDict = new Dictionary<string, object>
+            {
+                { "model", baseRequest.model },
+                { "messages", baseRequest.messages },
+                { "temperature", baseRequest.temperature },
+                { _maxTokensParameterName, _maxTokens }
+            };
+            
+            var request = requestDict;
+
+            // Log the final API request parameters for verification
+            Console.WriteLine("[ChatClientFactory] API Request Parameters:");
+            Console.WriteLine($"  Model: {baseRequest.model}");
+            Console.WriteLine($"  Temperature: {baseRequest.temperature}");
+            Console.WriteLine($"  {_maxTokensParameterName}: {_maxTokens}");
+            Console.WriteLine($"  Message Count: {messageList.Count}");
 
             var requestJson = System.Text.Json.JsonSerializer.Serialize(request);
             var content = new StringContent(requestJson, System.Text.Encoding.UTF8, "application/json");
 
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
 
+            Console.WriteLine($"[ChatClientFactory] Posting to API: {_apiUrl}/chat/completions");
             var response = await _httpClient.PostAsync($"{_apiUrl}/chat/completions", content, cancellationToken);
+
+            Console.WriteLine($"[ChatClientFactory] API Response Status: {response.StatusCode}");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -116,9 +153,12 @@ public class OpenAiCompatibleChatClient : IChatClient
                     messageElement.TryGetProperty("content", out var textElement))
                 {
                     var text = textElement.GetString() ?? string.Empty;
+                    Console.WriteLine("[ChatClientFactory] API call successful. Response received.");
                     return new ChatResponse(new ChatMessage(ChatRole.Assistant, text));
                 }
             }
+            
+            Console.WriteLine("[ChatClientFactory] Warning: No valid response received from API.");
 
             return new ChatResponse(new ChatMessage(ChatRole.Assistant, "No response from API"));
         }
