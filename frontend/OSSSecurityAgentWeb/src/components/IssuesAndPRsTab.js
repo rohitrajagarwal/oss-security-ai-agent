@@ -37,6 +37,13 @@ export default function IssuesAndPRsTab({ issues, onApprovePR, onMergePR, onChec
         </div>
       )}
 
+      {isLoading && (
+        <div className="loading-state">
+          <div className="spinner"></div>
+          <p>Loading issues and PRs from GitHub...</p>
+        </div>
+      )}
+
       {prs.length > 0 && (
         <div className="prs-section">
           <h2>Pull Requests ({prs.length})</h2>
